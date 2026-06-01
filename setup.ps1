@@ -139,8 +139,13 @@ function Write-Banner {
 
 function Ensure-Registry {
     if (-not (Test-Path $REG_BASE)) {
-        New-Item -Path $REG_BASE -Force | Out-Null
+        & reg add "HKCU\SOFTWARE\LidKeeper" /f 2>&1 | Out-Null
     }
+}
+
+function Set-RegistryValue {
+    param([string]$Name, [string]$Value, [string]$Type = "REG_SZ")
+    & reg add "HKCU\SOFTWARE\LidKeeper" /v $Name /t $Type /d $Value /f 2>&1 | Out-Null
 }
 
 function Get-CurrentLidAction {
@@ -236,10 +241,10 @@ function Install-SmartMode {
 
     Ensure-Registry
     $current = Get-CurrentLidAction
-    New-ItemProperty -Path $REG_BASE -Name "OriginalLidActionAC" -Value $current.AC -PropertyType DWord -Force | Out-Null
-    New-ItemProperty -Path $REG_BASE -Name "OriginalLidActionDC" -Value $current.DC -PropertyType DWord -Force | Out-Null
-    New-ItemProperty -Path $REG_BASE -Name "PowerSource" -Value $powerSource -PropertyType String -Force | Out-Null
-    New-ItemProperty -Path $REG_BASE -Name "Mode" -Value "Smart" -PropertyType String -Force | Out-Null
+    Set-RegistryValue -Name "OriginalLidActionAC" -Value $current.AC -Type "REG_DWORD"
+    Set-RegistryValue -Name "OriginalLidActionDC" -Value $current.DC -Type "REG_DWORD"
+    Set-RegistryValue -Name "PowerSource" -Value $powerSource -Type "REG_SZ"
+    Set-RegistryValue -Name "Mode" -Value "Smart" -Type "REG_SZ"
 
     Write-Host (T 'SavedOriginal') -ForegroundColor Green
 
@@ -256,7 +261,7 @@ function Install-SmartMode {
 
     $trigger = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddMinutes(1)) `
         -RepetitionInterval (New-TimeSpan -Minutes 1) `
-        -RepetitionDuration (New-TimeSpan -Days 36500)
+        -RepetitionDuration (New-TimeSpan -Days 9999)
 
     $settings = New-ScheduledTaskSettingsSet `
         -AllowStartIfOnBatteries `
@@ -300,10 +305,10 @@ function Install-AlwaysOnMode {
 
     Ensure-Registry
     $current = Get-CurrentLidAction
-    New-ItemProperty -Path $REG_BASE -Name "OriginalLidActionAC" -Value $current.AC -PropertyType DWord -Force | Out-Null
-    New-ItemProperty -Path $REG_BASE -Name "OriginalLidActionDC" -Value $current.DC -PropertyType DWord -Force | Out-Null
-    New-ItemProperty -Path $REG_BASE -Name "PowerSource" -Value $powerSource -PropertyType String -Force | Out-Null
-    New-ItemProperty -Path $REG_BASE -Name "Mode" -Value "AlwaysOn" -PropertyType String -Force | Out-Null
+    Set-RegistryValue -Name "OriginalLidActionAC" -Value $current.AC -Type "REG_DWORD"
+    Set-RegistryValue -Name "OriginalLidActionDC" -Value $current.DC -Type "REG_DWORD"
+    Set-RegistryValue -Name "PowerSource" -Value $powerSource -Type "REG_SZ"
+    Set-RegistryValue -Name "Mode" -Value "AlwaysOn" -Type "REG_SZ"
 
     Set-LidAction -Value $LID_DO_NOTHING -PowerSource $powerSource
 
