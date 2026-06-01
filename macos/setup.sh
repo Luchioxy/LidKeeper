@@ -93,12 +93,26 @@ check_agents_running() {
     return 1
 }
 
+# Check if tracked process is still alive
+is_tracked_alive() {
+    if [ -f "$PID_FILE" ]; then
+        local pid
+        pid=$(cat "$PID_FILE")
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            return 0
+        fi
+        rm -f "$PID_FILE"
+    fi
+    return 1
+}
+
 if check_agents_running; then
-    # Kill old caffeinate if running, then start fresh
-    kill_tracked
-    caffeinate -i -s &
-    echo $! > "$PID_FILE"
-    log "Agents running - preventing sleep (PID: $!)"
+    # Only start new caffeinate if not already running
+    if ! is_tracked_alive; then
+        caffeinate -i -s &
+        echo $! > "$PID_FILE"
+        log "Agents running - started caffeinate (PID: $!)"
+    fi
 else
     # No agents - stop preventing sleep
     kill_tracked
@@ -133,8 +147,10 @@ EOF
 </plist>
 EOF
 
-    # Load the LaunchAgent
-    launchctl load "$PLIST_PATH" 2>/dev/null || true
+    # Load the LaunchAgent (use modern bootstrap if available)
+    if command -v launchctl &> /dev/null; then
+        launchctl bootstrap gui/$(id -u) "$PLIST_PATH" 2>/dev/null || launchctl load "$PLIST_PATH" 2>/dev/null || true
+    fi
 
     # If agents are running now, prevent sleep immediately
     if check_agents_running; then
@@ -162,18 +178,19 @@ install_always_on_mode() {
 
     # Save original settings before modifying
     mkdir -p "$INSTALL_DIR"
-    pmset -g | grep -E "^\s*(sleep|disablesleep|disksleep)" > "$INSTALL_DIR/original_pmset.txt" 2>/dev/null || true
+    pmset -g | grep -E "^\s*(lidwake|autopoweroff|standby)" > "$INSTALL_DIR/original_pmset.txt" 2>/dev/null || true
 
-    # Prevent all sleep
-    sudo pmset -a disablesleep 1
-    sudo pmset -a sleep 0
+    # Prevent sleep on lid close only (keep idle sleep working)
+    sudo pmset -a lidwake 1
+    sudo pmset -a autopoweroff 0
+    sudo pmset -a standby 0
 
     echo ""
     echo -e "  ${GREEN}══════════════════════════════════════════════${NC}"
     echo -e "  ${GREEN}Always-On Mode enabled!${NC}"
     echo ""
-    echo "  System sleep disabled permanently."
-    echo "  To re-enable: sudo pmset -a disablesleep 0"
+    echo "  Lid close will not cause sleep."
+    echo "  Idle sleep still works normally."
     echo -e "  ${GREEN}══════════════════════════════════════════════${NC}"
     echo ""
 }
@@ -182,9 +199,9 @@ uninstall_all() {
     echo -e "  ${CYAN}[Uninstall] Cleaning up...${NC}"
     echo ""
 
-    # Unload LaunchAgent
+    # Unload LaunchAgent (use modern bootout if available)
     if [ -f "$PLIST_PATH" ]; then
-        launchctl unload "$PLIST_PATH" 2>/dev/null || true
+        launchctl bootout gui/$(id -u)/$PLIST_NAME 2>/dev/null || launchctl unload "$PLIST_PATH" 2>/dev/null || true
         rm -f "$PLIST_PATH"
         echo -e "  ${GREEN}Removed LaunchAgent.${NC}"
     fi

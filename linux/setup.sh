@@ -92,13 +92,26 @@ check_agents_running() {
     return 1
 }
 
+# Check if tracked process is still alive
+is_tracked_alive() {
+    if [ -f "$PID_FILE" ]; then
+        local pid
+        pid=$(cat "$PID_FILE")
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            return 0
+        fi
+        rm -f "$PID_FILE"
+    fi
+    return 1
+}
+
 if check_agents_running; then
-    # Kill old inhibit if running, then start fresh
-    kill_tracked
-    # Inhibit idle sleep AND lid-switch-triggered sleep
-    systemd-inhibit --what=idle:sleep:handle-lid-switch --who=LidKeeper --why="AI Agent running" sleep infinity &
-    echo $! > "$PID_FILE"
-    log "Agents running - preventing sleep (PID: $!)"
+    # Only start new inhibit if not already running
+    if ! is_tracked_alive; then
+        systemd-inhibit --what=idle:sleep:handle-lid-switch --who=LidKeeper --why="AI Agent running" sleep infinity &
+        echo $! > "$PID_FILE"
+        log "Agents running - started inhibit (PID: $!)"
+    fi
 else
     # No agents - allow sleep
     kill_tracked
@@ -135,6 +148,9 @@ EOF
     systemctl --user daemon-reload
     systemctl --user enable "$SERVICE_NAME.timer"
     systemctl --user start "$SERVICE_NAME.timer"
+
+    # Enable linger so timer survives user logout
+    sudo loginctl enable-linger "$(whoami)" 2>/dev/null || true
 
     # If agents are running now, prevent sleep immediately
     if check_agents_running; then

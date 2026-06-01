@@ -277,7 +277,7 @@ function Install-SmartMode {
 
     $trigger = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddMinutes(1)) `
         -RepetitionInterval (New-TimeSpan -Minutes 1) `
-        -RepetitionDuration (New-TimeSpan -Days 9999)
+        -RepetitionDuration (New-TimeSpan -Seconds 0)
 
     $settings = New-ScheduledTaskSettingsSet `
         -AllowStartIfOnBatteries `
