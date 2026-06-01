@@ -117,13 +117,23 @@ function Get-LidActionRegPath {
 # ── Helper Functions ───────────────────────────────────────────────────────────
 
 function Write-Banner {
+    # Box-drawing chars as Unicode escapes to survive irm|iex encoding
+    $tl = -join [char[]]@(0x2554)  # ╔
+    $tr = -join [char[]]@(0x2557)  # ╗
+    $bl = -join [char[]]@(0x255A)  # ╚
+    $br = -join [char[]]@(0x255D)  # ╝
+    $h  = -join [char[]]@(0x2550)  # ═
+    $v  = -join [char[]]@(0x2551)  # ║
+    $sp = -join [char[]]@(0x0020)  # space
+
+    $hline = $h * 43
     Clear-Host
     Write-Host ""
-    Write-Host "  ╔═══════════════════════════════════════════╗" -ForegroundColor Cyan
-    Write-Host "  ║           LidKeeper v1.0                  ║" -ForegroundColor Cyan
+    Write-Host "  $tl$hline$tr" -ForegroundColor Cyan
+    Write-Host "  ${v}${sp}${sp}${sp}${sp}${sp}${sp}${sp}LidKeeper v1.0${sp}${sp}${sp}${sp}${sp}${sp}${sp}${sp}${sp}${sp}${sp}${sp}${sp}${sp}${sp}${sp}${sp}${sp}${sp}${sp}${sp}${v}" -ForegroundColor Cyan
     $tagline = T 'BannerTagline'
-    Write-Host "  ║       $($tagline.PadRight(29))║" -ForegroundColor Cyan
-    Write-Host "  ╚═══════════════════════════════════════════╝" -ForegroundColor Cyan
+    Write-Host "  ${v}${sp}${sp}${sp}${sp}${sp}${sp}$($tagline.PadRight(29))${v}" -ForegroundColor Cyan
+    Write-Host "  $bl$hline$br" -ForegroundColor Cyan
     Write-Host ""
 }
 
@@ -270,14 +280,14 @@ function Install-SmartMode {
         -Force | Out-Null
 
     Write-Host ""
-    Write-Host "  ══════════════════════════════════════════════" -ForegroundColor Green
+    Write-Host "  $((-join [char[]]@(0x2550)) * 46)" -ForegroundColor Green
     Write-Host "  $((T 'SmartEnabled'))" -ForegroundColor Green
     Write-Host ""
     Write-Host (T 'SmartDesc1') -ForegroundColor White
     Write-Host (T 'SmartDesc2') -ForegroundColor White
     Write-Host (T 'SmartDesc3') -ForegroundColor White
     Write-Host "$((T 'PowerSourceLabel')) $powerSource" -ForegroundColor White
-    Write-Host "  ══════════════════════════════════════════════" -ForegroundColor Green
+    Write-Host "  $((-join [char[]]@(0x2550)) * 46)" -ForegroundColor Green
     Write-Host ""
 }
 
@@ -298,13 +308,13 @@ function Install-AlwaysOnMode {
     Set-LidAction -Value $LID_DO_NOTHING -PowerSource $powerSource
 
     Write-Host ""
-    Write-Host "  ══════════════════════════════════════════════" -ForegroundColor Green
+    Write-Host "  $((-join [char[]]@(0x2550)) * 46)" -ForegroundColor Green
     Write-Host "  $((T 'AlwaysEnabled'))" -ForegroundColor Green
     Write-Host ""
     Write-Host (T 'AlwaysDesc1') -ForegroundColor White
     Write-Host "$((T 'PowerSourceLabel')) $powerSource" -ForegroundColor White
     Write-Host (T 'AlwaysDesc2') -ForegroundColor White
-    Write-Host "  ══════════════════════════════════════════════" -ForegroundColor Green
+    Write-Host "  $((-join [char[]]@(0x2550)) * 46)" -ForegroundColor Green
     Write-Host ""
 }
 
@@ -345,9 +355,9 @@ function Uninstall-All {
     }
 
     Write-Host ""
-    Write-Host "  ══════════════════════════════════════════════" -ForegroundColor Green
+    Write-Host "  $((-join [char[]]@(0x2550)) * 46)" -ForegroundColor Green
     Write-Host "  $((T 'UninstallDone'))" -ForegroundColor Green
-    Write-Host "  ══════════════════════════════════════════════" -ForegroundColor Green
+    Write-Host "  $((-join [char[]]@(0x2550)) * 46)" -ForegroundColor Green
     Write-Host ""
 }
 
