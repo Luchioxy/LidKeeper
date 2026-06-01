@@ -33,7 +33,14 @@ Open PowerShell and run:
 irm https://raw.githubusercontent.com/Luchioxy/LidKeeper/main/install.ps1 | iex
 ```
 
-> **Note:** Run as Administrator for full functionality. This downloads both scripts to a temp folder and launches the interactive setup.
+This will:
+1. Download scripts to `~/LidKeeper`
+2. Add a `lidkeeper` command to your PowerShell profile
+3. Launch the interactive setup
+
+After installation, just type `lidkeeper` in any new PowerShell window to re-run setup (change mode, uninstall, etc.).
+
+> **Note:** Run as Administrator for full functionality.
 
 ### Manual Install
 

@@ -2,29 +2,29 @@
 <#
 .SYNOPSIS
     One-line installer for LidKeeper.
-    Downloads both scripts to a temp directory and runs setup.
+    Downloads scripts, installs to ~/LidKeeper, adds 'lidkeeper' command.
 .DESCRIPTION
-    Usage: irm https://raw.githubusercontent.com/USER/LidKeeper/main/install.ps1 | iex
-    Downloads setup.ps1 and lid-monitor.ps1, then launches the interactive setup.
+    Usage: irm https://raw.githubusercontent.com/Luchioxy/LidKeeper/main/install.ps1 | iex
 #>
 
 $repo = "Luchioxy/LidKeeper"
 $branch = "main"
 $baseRaw = "https://raw.githubusercontent.com/$repo/$branch"
-$tempDir = Join-Path $env:TEMP "LidKeeper"
+$installDir = Join-Path $HOME "LidKeeper"
 
-# Create temp directory
-if (Test-Path $tempDir) { Remove-Item $tempDir -Recurse -Force }
-New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+# Create install directory
+if (-not (Test-Path $installDir)) {
+    New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+}
 
 Write-Host ""
-Write-Host "  Downloading LidKeeper..." -ForegroundColor Cyan
+Write-Host "  Installing LidKeeper..." -ForegroundColor Cyan
 
 # Download both scripts
 $files = @("setup.ps1", "lid-monitor.ps1")
 foreach ($file in $files) {
     $url = "$baseRaw/$file"
-    $dest = Join-Path $tempDir $file
+    $dest = Join-Path $installDir $file
     try {
         Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing -ErrorAction Stop
         Write-Host "    $file ... OK" -ForegroundColor Green
@@ -36,9 +36,38 @@ foreach ($file in $files) {
     }
 }
 
+# Add 'lidkeeper' command to PowerShell profile
+$profileLine = 'function lidkeeper { & "$HOME\LidKeeper\setup.ps1" }'
+$profilePath = $PROFILE.CurrentUserAllHosts
+
+# Ensure profile directory exists
+$profileDir = Split-Path $profilePath
+if (-not (Test-Path $profileDir)) {
+    New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
+}
+
+# Add function if not already present
+if (Test-Path $profilePath) {
+    $content = Get-Content $profilePath -Raw -ErrorAction SilentlyContinue
+    if ($content -and $content -match 'lidkeeper') {
+        Write-Host "    'lidkeeper' command already in profile." -ForegroundColor DarkGray
+    }
+    else {
+        Add-Content -Path $profilePath -Value "`n# LidKeeper`n$profileLine"
+        Write-Host "    Added 'lidkeeper' command to profile." -ForegroundColor Green
+    }
+}
+else {
+    Set-Content -Path $profilePath -Value "# LidKeeper`n$profileLine"
+    Write-Host "    Added 'lidkeeper' command to profile." -ForegroundColor Green
+}
+
+Write-Host ""
+Write-Host "  Done!" -ForegroundColor Green
+Write-Host "  Installed to: $installDir" -ForegroundColor White
 Write-Host ""
 Write-Host "  Launching setup..." -ForegroundColor Cyan
 Write-Host ""
 
-# Run setup.ps1 from the temp directory
-& (Join-Path $tempDir "setup.ps1")
+# Run setup.ps1 from install directory
+& (Join-Path $installDir "setup.ps1")
