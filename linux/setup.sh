@@ -15,8 +15,27 @@ SERVICE_PATH="$HOME/.config/systemd/user/$SERVICE_NAME.service"
 TIMER_PATH="$HOME/.config/systemd/user/$SERVICE_NAME.timer"
 LOG_FILE="$INSTALL_DIR/lidkeeper.log"
 
-# Agent process names (case-sensitive on Linux)
-AGENT_PROCESSES=("claude" "Codex" "WorkBuddy")
+# Default agent process names (case-sensitive on Linux)
+DEFAULT_AGENT_PROCESSES=("claude" "Codex" "WorkBuddy")
+
+# Load agents from config file, or use defaults
+load_agents() {
+    local conf="$INSTALL_DIR/agents.conf"
+    if [ -f "$conf" ]; then
+        AGENT_PROCESSES=()
+        while IFS= read -r line; do
+            line=$(echo "$line" | xargs)  # trim whitespace
+            [ -n "$line" ] && AGENT_PROCESSES+=("$line")
+        done < "$conf"
+    else
+        AGENT_PROCESSES=("${DEFAULT_AGENT_PROCESSES[@]}")
+    fi
+}
+
+save_agents() {
+    mkdir -p "$INSTALL_DIR"
+    printf '%s\n' "${AGENT_PROCESSES[@]}" > "$INSTALL_DIR/agents.conf"
+}
 
 # ── Colors ─────────────────────────────────────────────────────────────────────
 
@@ -46,6 +65,9 @@ check_agents_running() {
     return 1
 }
 
+# Load agent list from config (or use defaults)
+load_agents
+
 # ── Mode Implementations ──────────────────────────────────────────────────────
 
 install_smart_mode() {
@@ -56,6 +78,9 @@ install_smart_mode() {
     mkdir -p "$INSTALL_DIR"
     mkdir -p "$HOME/.config/systemd/user"
 
+    # Save agent process list to config
+    save_agents
+
     # Create monitor script with proper lid-switch inhibition
     cat > "$MONITOR_SCRIPT" << 'EOF'
 #!/bin/bash
@@ -65,7 +90,18 @@ install_smart_mode() {
 INSTALL_DIR="$HOME/.lidkeeper"
 PID_FILE="$INSTALL_DIR/inhibit.pid"
 LOG_FILE="$INSTALL_DIR/lidkeeper.log"
-AGENT_PROCESSES=("claude" "Codex" "WorkBuddy")
+
+# Load agents from config file, or use defaults
+AGENT_PROCESSES=()
+if [ -f "$INSTALL_DIR/agents.conf" ]; then
+    while IFS= read -r line; do
+        line=$(echo "$line" | xargs)  # trim whitespace
+        [ -n "$line" ] && AGENT_PROCESSES+=("$line")
+    done < "$INSTALL_DIR/agents.conf"
+fi
+if [ ${#AGENT_PROCESSES[@]} -eq 0 ]; then
+    AGENT_PROCESSES=("claude" "Codex" "WorkBuddy")
+fi
 
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG_FILE"
@@ -179,7 +215,20 @@ install_always_on_mode() {
     # Create install directory for backup
     mkdir -p "$INSTALL_DIR"
 
+    # Save agent process list to config
+    save_agents
+
     # Check if we can modify logind.conf
+    echo -e "  ${YELLOW}Warning: This modifies /etc/systemd/logind.conf (system-wide).${NC}"
+    echo -e "  ${YELLOW}Restarting systemd-logind will briefly disconnect active sessions.${NC}"
+    echo ""
+    read -p "  Continue? [y/N]: " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo "  Cancelled."
+        return
+    fi
+    echo ""
+
     if [ -w /etc/systemd/logind.conf ]; then
         # Backup original to our install dir
         cp /etc/systemd/logind.conf "$INSTALL_DIR/logind.conf.bak"
@@ -265,38 +314,82 @@ uninstall_all() {
     echo ""
 }
 
+configure_agents() {
+    echo ""
+    echo "  Current monitored processes:"
+    for proc in "${AGENT_PROCESSES[@]}"; do
+        echo "    - $proc"
+    done
+    echo ""
+    echo "  Enter new process names (one per line, empty line to finish):"
+    echo "  Leave blank and press Enter to keep current list."
+    echo ""
+    local new_agents=()
+    while true; do
+        read -p "  > " proc
+        [ -z "$proc" ] && break
+        new_agents+=("$proc")
+    done
+    if [ ${#new_agents[@]} -gt 0 ]; then
+        AGENT_PROCESSES=("${new_agents[@]}")
+        save_agents
+        echo ""
+        echo -e "  ${GREEN}Saved ${#AGENT_PROCESSES[@]} process(es).${NC}"
+    else
+        echo "  No changes."
+    fi
+    echo ""
+}
+
+show_status() {
+    echo "  Current Status:"
+    local timer_active=false
+    if systemctl --user is-active "$SERVICE_NAME.timer" > /dev/null 2>&1; then
+        timer_active=true
+    fi
+
+    if [ "$timer_active" = true ] || [ -f "$INSTALL_DIR/agents.conf" ]; then
+        load_agents
+        if check_agents_running; then
+            echo -e "    Running agents: ${GREEN}Yes${NC}"
+        else
+            echo -e "    Running agents: ${RED}No${NC}"
+        fi
+    fi
+
+    if [ "$timer_active" = true ]; then
+        echo -e "    Monitor: ${GREEN}Active${NC}"
+    else
+        echo -e "    Monitor: ${RED}Inactive${NC}"
+    fi
+    echo ""
+}
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 print_banner
+show_status
 
-echo "  Current Status:"
-if check_agents_running; then
-    echo -e "    Running agents: ${GREEN}Yes${NC}"
-else
-    echo -e "    Running agents: ${RED}No${NC}"
-fi
+while true; do
+    echo "  Select mode:"
+    echo ""
+    echo "    [1] Smart Mode  - No sleep only when agents run"
+    echo "    [2] Always-On   - Never sleep on lid close"
+    echo "    [3] Uninstall   - Remove all settings"
+    echo "    [4] Configure Agents  - Manage monitored process list"
+    echo "    [0] Exit"
+    echo ""
 
-if systemctl --user is-active "$SERVICE_NAME.timer" > /dev/null 2>&1; then
-    echo -e "    Monitor: ${GREEN}Active${NC}"
-else
-    echo -e "    Monitor: ${RED}Inactive${NC}"
-fi
+    read -p "  Choose (0-4): " choice
 
-echo ""
-echo "  Select mode:"
-echo ""
-echo "    [1] Smart Mode  - No sleep only when agents run"
-echo "    [2] Always-On   - Never sleep on lid close"
-echo "    [3] Uninstall   - Remove all settings"
-echo "    [0] Exit"
-echo ""
+    case $choice in
+        1) install_smart_mode ;;
+        2) install_always_on_mode ;;
+        3) uninstall_all ;;
+        4) configure_agents ;;
+        0) echo "  Goodbye!"; exit 0 ;;
+        *) echo -e "  ${RED}Invalid choice.${NC}" ;;
+    esac
 
-read -p "  Choose (0-3): " choice
-
-case $choice in
-    1) install_smart_mode ;;
-    2) install_always_on_mode ;;
-    3) uninstall_all ;;
-    0) echo "  Goodbye!"; exit 0 ;;
-    *) echo -e "  ${RED}Invalid choice.${NC}"; exit 1 ;;
-esac
+    show_status
+done

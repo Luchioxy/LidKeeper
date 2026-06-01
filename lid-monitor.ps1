@@ -24,10 +24,12 @@ param(
 
 $REG_BASE       = "HKCU\SOFTWARE\LidKeeper"
 $TASK_NAME      = "LidKeeper-Monitor"
+$LOG_DIR        = Join-Path $HOME "LidKeeper"
+$LOG_FILE       = Join-Path $LOG_DIR "lidkeeper.log"
 
-# Agent process names (Get-Process is case-insensitive on Windows)
-# Agent 进程名列表（Get-Process 在 Windows 上不区分大小写）
-$AGENT_PROCESSES = @("claude", "Codex", "WorkBuddy")
+# Default agent process names (Get-Process is case-insensitive on Windows)
+# 默认 Agent 进程名列表（Get-Process 在 Windows 上不区分大小写）
+$DEFAULT_AGENT_PROCESSES = @("claude", "Codex", "WorkBuddy")
 
 # Lid action values / 合盖动作值
 $LID_DO_NOTHING = 0
@@ -38,6 +40,35 @@ $SUB_BUTTONS_GUID = "4f971e89-eebd-4455-a8de-9e59040e7347"
 $LID_ACTION_GUID  = "5ca83367-6e45-459f-a27b-476b1d01c936"
 
 # ── Helper Functions ───────────────────────────────────────────────────────────
+
+function Write-Log {
+    param([string]$Message)
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $line = "$timestamp $Message"
+    try {
+        if (-not (Test-Path $LOG_DIR)) {
+            New-Item -ItemType Directory -Path $LOG_DIR -Force | Out-Null
+        }
+        # Truncate log if larger than 1MB
+        if ((Test-Path $LOG_FILE) -and ((Get-Item $LOG_FILE).Length -gt 1MB)) {
+            Clear-Content -Path $LOG_FILE -ErrorAction SilentlyContinue
+        }
+        Add-Content -Path $LOG_FILE -Value $line -ErrorAction SilentlyContinue
+    }
+    catch {}
+}
+
+function Get-AgentProcesses {
+    $agents = $DEFAULT_AGENT_PROCESSES
+    try {
+        $props = Get-ItemProperty -Path $REG_BASE -Name "AgentProcesses" -ErrorAction Stop
+        if ($props.AgentProcesses) {
+            $agents = ($props.AgentProcesses -split ",") | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
+        }
+    }
+    catch {}
+    return $agents
+}
 
 function Get-ActivePowerSchemeGUID {
     <#
@@ -112,7 +143,8 @@ function Test-AgentsRunning {
         Check if any AI agent process is running.
         检测是否有 AI agent 进程正在运行。
     #>
-    foreach ($name in $AGENT_PROCESSES) {
+    $agents = Get-AgentProcesses
+    foreach ($name in $agents) {
         if (Get-Process -Name $name -ErrorAction SilentlyContinue) {
             return $true
         }
@@ -126,6 +158,7 @@ function Test-AgentsRunning {
 # 如果任务被禁用则退出
 $task = Get-ScheduledTask -TaskName $TASK_NAME -ErrorAction SilentlyContinue
 if ($task -and $task.State -eq "Disabled") {
+    Write-Log "Task is disabled, exiting."
     exit 0
 }
 
@@ -134,6 +167,7 @@ $original = Get-OriginalLidAction
 
 # Check agent processes / 检测 agent 进程
 $agentsRunning = Test-AgentsRunning
+Write-Log "Agent check: running=$agentsRunning, PowerSource=$PowerSource"
 
 # Read current system lid action from registry (uses active scheme)
 # 从注册表读取当前系统合盖设置（使用活动方案）
@@ -158,6 +192,7 @@ if ($agentsRunning) {
     }
     if ($needsChange) {
         Set-LidAction -Value $LID_DO_NOTHING -PowerSource $PowerSource
+        Write-Log "Agents detected - set lid action to 'Do nothing' ($PowerSource)"
     }
 }
 else {
@@ -177,5 +212,6 @@ else {
         if ($PowerSource -eq "DC" -or $PowerSource -eq "Both") {
             Set-LidAction -Value $original.DC -PowerSource "DC"
         }
+        Write-Log "No agents - restored original lid action (AC=$($original.AC), DC=$($original.DC))"
     }
 }

@@ -33,7 +33,7 @@ function T {
         'ModeAlwaysOn'       = @{ en = '  [2] Always-On   - Never sleep on lid close';     zh = -join [char[]]@(0x0020,0x0020,0x005B,0x0032,0x005D,0x0020,0x5E38,0x5F00,0x6A21,0x5F0F,0x0020,0x0020,0x2014,0x0020,0x59CB,0x7EC8,0x963B,0x6B62,0x5408,0x76D6,0x4F11,0x7720) }
         'ModeUninstall'      = @{ en = '  [3] Uninstall    - Remove all settings';          zh = -join [char[]]@(0x0020,0x0020,0x005B,0x0033,0x005D,0x0020,0x5378,0x8F7D,0x0020,0x0020,0x0020,0x0020,0x0020,0x2014,0x0020,0x79FB,0x9664,0x6240,0x6709,0x8BBE,0x7F6E,0xFF0C,0x6062,0x590D,0x9ED8,0x8BA4) }
         'ModeExit'           = @{ en = '  [0] Exit';                                       zh = -join [char[]]@(0x0020,0x0020,0x005B,0x0030,0x005D,0x0020,0x9000,0x51FA) }
-        'PromptChoice'       = @{ en = '  Choose (0-3)';                                   zh = -join [char[]]@(0x0020,0x0020,0x8BF7,0x9009,0x62E9,0x0020,0x0028,0x0030,0x002D,0x0033,0x0029) }
+        'PromptChoice'       = @{ en = '  Choose (0-4)';                                   zh = -join [char[]]@(0x0020,0x0020,0x8BF7,0x9009,0x62E9,0x0020,0x0028,0x0030,0x002D,0x0034,0x0029) }
         'InvalidChoice'      = @{ en = '  Invalid choice.';                                zh = -join [char[]]@(0x0020,0x0020,0x65E0,0x6548,0x9009,0x62E9,0x3002) }
         'Goodbye'            = @{ en = '  Goodbye!';                                       zh = -join [char[]]@(0x0020,0x0020,0x518D,0x89C1,0xFF01) }
         'PressKeyExit'       = @{ en = '  Press any key to exit...';                       zh = -join [char[]]@(0x0020,0x0020,0x6309,0x4EFB,0x610F,0x952E,0x9000,0x51FA,0x2026) }
@@ -102,8 +102,8 @@ $TASK_NAME       = "LidKeeper-Monitor"
 $SCRIPT_DIR      = Split-Path -Parent $MyInvocation.MyCommand.Path
 $MONITOR_SCRIPT  = Join-Path $SCRIPT_DIR "lid-monitor.ps1"
 
-# Agent process names (Get-Process is case-insensitive on Windows)
-$AGENT_PROCESSES = @("claude", "Codex", "WorkBuddy")
+# Default agent process names (Get-Process is case-insensitive on Windows)
+$DEFAULT_AGENT_PROCESSES = @("claude", "Codex", "WorkBuddy")
 
 # Lid action values
 $LID_DO_NOTHING = 0
@@ -193,8 +193,27 @@ function Set-LidAction {
     & powercfg /setactive SCHEME_CURRENT 2>&1 | Out-Null
 }
 
+function Get-AgentProcesses {
+    $agents = $DEFAULT_AGENT_PROCESSES
+    try {
+        $props = Get-ItemProperty -Path "HKCU:\SOFTWARE\LidKeeper" -Name "AgentProcesses" -ErrorAction Stop
+        if ($props.AgentProcesses) {
+            $agents = ($props.AgentProcesses -split ",") | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
+        }
+    }
+    catch {}
+    return $agents
+}
+
+function Save-AgentProcesses {
+    param([string[]]$Processes)
+    Ensure-Registry
+    Set-RegistryValue -Name "AgentProcesses" -Value ($Processes -join ",") -Type "REG_SZ"
+}
+
 function Test-AgentsRunning {
-    foreach ($name in $AGENT_PROCESSES) {
+    $agents = Get-AgentProcesses
+    foreach ($name in $agents) {
         if (Get-Process -Name $name -ErrorAction SilentlyContinue) {
             return $true
         }
@@ -213,7 +232,7 @@ function Show-CurrentStatus {
     Write-Host "$((T 'TaskStatus')) $taskText" -ForegroundColor White
 
     $agents = @()
-    foreach ($name in $AGENT_PROCESSES) {
+    foreach ($name in (Get-AgentProcesses)) {
         if (Get-Process -Name $name -ErrorAction SilentlyContinue) {
             $agents += $name
         }
@@ -261,6 +280,7 @@ function Install-SmartMode {
     Set-RegistryValue -Name "OriginalLidActionDC" -Value $current.DC -Type "REG_DWORD"
     Set-RegistryValue -Name "PowerSource" -Value $powerSource -Type "REG_SZ"
     Set-RegistryValue -Name "Mode" -Value "Smart" -Type "REG_SZ"
+    Save-AgentProcesses -Processes (Get-AgentProcesses)
 
     Write-Host (T 'SavedOriginal') -ForegroundColor Green
 
@@ -325,6 +345,7 @@ function Install-AlwaysOnMode {
     Set-RegistryValue -Name "OriginalLidActionDC" -Value $current.DC -Type "REG_DWORD"
     Set-RegistryValue -Name "PowerSource" -Value $powerSource -Type "REG_SZ"
     Set-RegistryValue -Name "Mode" -Value "AlwaysOn" -Type "REG_SZ"
+    Save-AgentProcesses -Processes (Get-AgentProcesses)
 
     Set-LidAction -Value $LID_DO_NOTHING -PowerSource $powerSource
 
@@ -390,34 +411,91 @@ function Uninstall-All {
     Write-Host ""
 }
 
+function Configure-Agents {
+    $current = Get-AgentProcesses
+    Write-Host ""
+    $headerText = if ($script:Lang -eq 'zh') {
+        -join [char[]]@(0x0020,0x0020,0x5F53,0x524D,0x76D1,0x63A7,0x8FDB,0x7A0B,0x5217,0x8868,0xFF1A)
+    } else {
+        '  Current monitored processes:'
+    }
+    Write-Host $headerText -ForegroundColor Yellow
+    for ($i = 0; $i -lt $current.Count; $i++) {
+        Write-Host "    [$($i+1)] $($current[$i])" -ForegroundColor White
+    }
+    Write-Host ""
+
+    $addText = if ($script:Lang -eq 'zh') {
+        -join [char[]]@(0x0020,0x0020,0x8F93,0x5165,0x65B0,0x8FDB,0x7A0B,0x540D,0xFF08,0x591A,0x4E2A,0x7528,0x9017,0x53F7,0x5206,0x9694,0xFF0C,0x7559,0x7A7A,0x4FDD,0x6301,0x4E0D,0x53D8,0xFF09,0xFF1A)
+    } else {
+        '  Enter new process names (comma-separated, leave blank to keep current):'
+    }
+    Write-Host $addText -ForegroundColor Yellow
+    $userInput = Read-Host "  >"
+
+    if ($userInput -and $userInput.Trim()) {
+        $newAgents = $userInput -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
+        if ($newAgents.Count -gt 0) {
+            Save-AgentProcesses -Processes $newAgents
+            $savedText = if ($script:Lang -eq 'zh') {
+                -join [char[]]@(0x0020,0x0020,0x5DF2,0x4FDD,0x5B58,0xFF1A)
+            } else {
+                '  Saved:'
+            }
+            Write-Host ""
+            Write-Host $savedText -ForegroundColor Green
+            foreach ($a in $newAgents) {
+                Write-Host "    - $a" -ForegroundColor White
+            }
+        }
+    }
+    else {
+        $unchangedText = if ($script:Lang -eq 'zh') {
+            -join [char[]]@(0x0020,0x0020,0x672A,0x4FEE,0x6539,0x3002)
+        } else {
+            '  No changes.'
+        }
+        Write-Host $unchangedText -ForegroundColor DarkGray
+    }
+    Write-Host ""
+}
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 Write-Banner
 Show-CurrentStatus
 
-Write-Host (T 'MenuHeader') -ForegroundColor Yellow
-Write-Host ""
-Write-Host (T 'ModeSmart')     -ForegroundColor White
-Write-Host (T 'ModeAlwaysOn')  -ForegroundColor White
-Write-Host (T 'ModeUninstall') -ForegroundColor White
-Write-Host (T 'ModeExit')      -ForegroundColor White
-Write-Host ""
-
-$choice = Read-Host (T 'PromptChoice')
-
-switch ($choice) {
-    "1" { Install-SmartMode }
-    "2" { Install-AlwaysOnMode }
-    "3" { Uninstall-All }
-    "0" {
-        Write-Host (T 'Goodbye') -ForegroundColor Cyan
-        exit 0
+while ($true) {
+    Write-Host (T 'MenuHeader') -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host (T 'ModeSmart')     -ForegroundColor White
+    Write-Host (T 'ModeAlwaysOn')  -ForegroundColor White
+    Write-Host (T 'ModeUninstall') -ForegroundColor White
+    $modeConfigureAgents = if ($script:Lang -eq 'zh') {
+        -join [char[]]@(0x0020,0x0020,0x005B,0x0034,0x005D,0x0020,0x914D,0x7F6E,0x0020,0x0041,0x0067,0x0065,0x006E,0x0074,0x0020,0x0020,0x2014,0x0020,0x7BA1,0x7406,0x76D1,0x63A7,0x8FDB,0x7A0B,0x5217,0x8868)
+    } else {
+        '  [4] Configure Agents  - Manage monitored process list'
     }
-    default {
-        Write-Host (T 'InvalidChoice') -ForegroundColor Red
-        exit 1
+    Write-Host $modeConfigureAgents -ForegroundColor White
+    Write-Host (T 'ModeExit')      -ForegroundColor White
+    Write-Host ""
+
+    $choice = Read-Host (T 'PromptChoice')
+
+    switch ($choice) {
+        "1" { Install-SmartMode }
+        "2" { Install-AlwaysOnMode }
+        "3" { Uninstall-All }
+        "4" { Configure-Agents }
+        "0" {
+            Write-Host (T 'Goodbye') -ForegroundColor Cyan
+            exit 0
+        }
+        default {
+            Write-Host (T 'InvalidChoice') -ForegroundColor Red
+        }
     }
+
+    # Refresh status after each action
+    Show-CurrentStatus
 }
-
-Write-Host (T 'PressKeyExit') -ForegroundColor DarkGray
-$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")

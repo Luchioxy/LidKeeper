@@ -14,8 +14,27 @@ PLIST_NAME="com.lidkeeper.monitor"
 PLIST_PATH="$HOME/Library/LaunchAgents/$PLIST_NAME.plist"
 LOG_FILE="$INSTALL_DIR/lidkeeper.log"
 
-# Agent process names (case-sensitive on macOS)
-AGENT_PROCESSES=("claude" "Codex" "WorkBuddy")
+# Default agent process names (case-sensitive on macOS)
+DEFAULT_AGENT_PROCESSES=("claude" "Codex" "WorkBuddy")
+
+# Load agents from config file, or use defaults
+load_agents() {
+    local conf="$INSTALL_DIR/agents.conf"
+    if [ -f "$conf" ]; then
+        AGENT_PROCESSES=()
+        while IFS= read -r line; do
+            line=$(echo "$line" | xargs)  # trim whitespace
+            [ -n "$line" ] && AGENT_PROCESSES+=("$line")
+        done < "$conf"
+    else
+        AGENT_PROCESSES=("${DEFAULT_AGENT_PROCESSES[@]}")
+    fi
+}
+
+save_agents() {
+    mkdir -p "$INSTALL_DIR"
+    printf '%s\n' "${AGENT_PROCESSES[@]}" > "$INSTALL_DIR/agents.conf"
+}
 
 # ── Colors ─────────────────────────────────────────────────────────────────────
 
@@ -45,6 +64,9 @@ check_agents_running() {
     return 1
 }
 
+# Load agent list from config (or use defaults)
+load_agents
+
 # ── Mode Implementations ──────────────────────────────────────────────────────
 
 install_smart_mode() {
@@ -55,7 +77,11 @@ install_smart_mode() {
     mkdir -p "$INSTALL_DIR"
 
     # Save original pmset settings for restore
-    pmset -g | grep -E "^\s*(sleep|disablesleep|disksleep)" > "$INSTALL_DIR/original_pmset.txt" 2>/dev/null || true
+    pmset -g | grep -E "^\s*(sleep|disablesleep|disksleep)" > "$INSTALL_DIR/original_smart_pmset.txt" 2>/dev/null || true
+    echo "smart" > "$INSTALL_DIR/current_mode"
+
+    # Save agent process list to config
+    save_agents
 
     # Create monitor script with proper PID tracking
     cat > "$MONITOR_SCRIPT" << 'EOF'
@@ -66,7 +92,18 @@ install_smart_mode() {
 INSTALL_DIR="$HOME/.lidkeeper"
 PID_FILE="$INSTALL_DIR/caffeinate.pid"
 LOG_FILE="$INSTALL_DIR/lidkeeper.log"
-AGENT_PROCESSES=("claude" "Codex" "WorkBuddy")
+
+# Load agents from config file, or use defaults
+AGENT_PROCESSES=()
+if [ -f "$INSTALL_DIR/agents.conf" ]; then
+    while IFS= read -r line; do
+        line=$(echo "$line" | xargs)  # trim whitespace
+        [ -n "$line" ] && AGENT_PROCESSES+=("$line")
+    done < "$INSTALL_DIR/agents.conf"
+fi
+if [ ${#AGENT_PROCESSES[@]} -eq 0 ]; then
+    AGENT_PROCESSES=("claude" "Codex" "WorkBuddy")
+fi
 
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG_FILE"
@@ -178,7 +215,11 @@ install_always_on_mode() {
 
     # Save original settings before modifying
     mkdir -p "$INSTALL_DIR"
-    pmset -g | grep -E "^\s*(lidwake|autopoweroff|standby)" > "$INSTALL_DIR/original_pmset.txt" 2>/dev/null || true
+    pmset -g | grep -E "^\s*(lidwake|autopoweroff|standby)" > "$INSTALL_DIR/original_always_pmset.txt" 2>/dev/null || true
+    echo "always" > "$INSTALL_DIR/current_mode"
+
+    # Save agent process list to config
+    save_agents
 
     # Prevent sleep on lid close only (keep idle sleep working)
     sudo pmset -a lidwake 1
@@ -216,22 +257,44 @@ uninstall_all() {
         rm -f "$PID_FILE"
     fi
 
-    # Restore original settings
-    if [ -f "$INSTALL_DIR/original_pmset.txt" ]; then
-        # Parse and restore each saved setting
+    # Restore original settings based on which mode was installed
+    local restored=false
+    local mode_file="$INSTALL_DIR/current_mode"
+    local backup_file=""
+
+    if [ -f "$mode_file" ]; then
+        local mode
+        mode=$(cat "$mode_file")
+        if [ "$mode" = "smart" ] && [ -f "$INSTALL_DIR/original_smart_pmset.txt" ]; then
+            backup_file="$INSTALL_DIR/original_smart_pmset.txt"
+        elif [ "$mode" = "always" ] && [ -f "$INSTALL_DIR/original_always_pmset.txt" ]; then
+            backup_file="$INSTALL_DIR/original_always_pmset.txt"
+        fi
+    fi
+
+    # Fallback: try whichever backup file exists
+    if [ -z "$backup_file" ]; then
+        if [ -f "$INSTALL_DIR/original_smart_pmset.txt" ]; then
+            backup_file="$INSTALL_DIR/original_smart_pmset.txt"
+        elif [ -f "$INSTALL_DIR/original_always_pmset.txt" ]; then
+            backup_file="$INSTALL_DIR/original_always_pmset.txt"
+        fi
+    fi
+
+    if [ -n "$backup_file" ]; then
         while IFS= read -r line; do
             key=$(echo "$line" | awk '{print $1}')
             value=$(echo "$line" | awk '{print $2}')
             if [ -n "$key" ] && [ -n "$value" ]; then
                 sudo pmset -a "$key" "$value" 2>/dev/null || true
             fi
-        done < "$INSTALL_DIR/original_pmset.txt"
+        done < "$backup_file"
+        restored=true
         echo -e "  ${GREEN}Restored original sleep settings.${NC}"
-    else
-        # Fallback: restore defaults
-        sudo pmset -a disablesleep 0 2>/dev/null || true
-        sudo pmset -a sleep 1 2>/dev/null || true
-        echo -e "  ${GREEN}Restored default sleep settings.${NC}"
+    fi
+
+    if [ "$restored" = false ]; then
+        echo -e "  ${YELLOW}No original settings found, skipped restore.${NC}"
     fi
 
     # Remove install directory
@@ -245,38 +308,77 @@ uninstall_all() {
     echo ""
 }
 
+configure_agents() {
+    echo ""
+    echo "  Current monitored processes:"
+    for proc in "${AGENT_PROCESSES[@]}"; do
+        echo "    - $proc"
+    done
+    echo ""
+    echo "  Enter new process names (one per line, empty line to finish):"
+    echo "  Leave blank and press Enter to keep current list."
+    echo ""
+    local new_agents=()
+    while true; do
+        read -p "  > " proc
+        [ -z "$proc" ] && break
+        new_agents+=("$proc")
+    done
+    if [ ${#new_agents[@]} -gt 0 ]; then
+        AGENT_PROCESSES=("${new_agents[@]}")
+        save_agents
+        echo ""
+        echo -e "  ${GREEN}Saved ${#AGENT_PROCESSES[@]} process(es).${NC}"
+    else
+        echo "  No changes."
+    fi
+    echo ""
+}
+
+show_status() {
+    echo "  Current Status:"
+    if [ -f "$PLIST_PATH" ] || [ -f "$INSTALL_DIR/agents.conf" ]; then
+        load_agents
+        if check_agents_running; then
+            echo -e "    Running agents: ${GREEN}Yes${NC}"
+        else
+            echo -e "    Running agents: ${RED}No${NC}"
+        fi
+    fi
+
+    if [ -f "$PLIST_PATH" ]; then
+        echo -e "    Monitor: ${GREEN}Active${NC}"
+    else
+        echo -e "    Monitor: ${RED}Inactive${NC}"
+    fi
+    echo ""
+}
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 print_banner
+show_status
 
-echo "  Current Status:"
-if check_agents_running; then
-    echo -e "    Running agents: ${GREEN}Yes${NC}"
-else
-    echo -e "    Running agents: ${RED}No${NC}"
-fi
+while true; do
+    echo "  Select mode:"
+    echo ""
+    echo "    [1] Smart Mode  - No sleep only when agents run"
+    echo "    [2] Always-On   - Never sleep on lid close"
+    echo "    [3] Uninstall   - Remove all settings"
+    echo "    [4] Configure Agents  - Manage monitored process list"
+    echo "    [0] Exit"
+    echo ""
 
-if [ -f "$PLIST_PATH" ]; then
-    echo -e "    Monitor: ${GREEN}Active${NC}"
-else
-    echo -e "    Monitor: ${RED}Inactive${NC}"
-fi
+    read -p "  Choose (0-4): " choice
 
-echo ""
-echo "  Select mode:"
-echo ""
-echo "    [1] Smart Mode  - No sleep only when agents run"
-echo "    [2] Always-On   - Never sleep on lid close"
-echo "    [3] Uninstall   - Remove all settings"
-echo "    [0] Exit"
-echo ""
+    case $choice in
+        1) install_smart_mode ;;
+        2) install_always_on_mode ;;
+        3) uninstall_all ;;
+        4) configure_agents ;;
+        0) echo "  Goodbye!"; exit 0 ;;
+        *) echo -e "  ${RED}Invalid choice.${NC}" ;;
+    esac
 
-read -p "  Choose (0-3): " choice
-
-case $choice in
-    1) install_smart_mode ;;
-    2) install_always_on_mode ;;
-    3) uninstall_all ;;
-    0) echo "  Goodbye!"; exit 0 ;;
-    *) echo -e "  ${RED}Invalid choice.${NC}"; exit 1 ;;
-esac
+    show_status
+done
