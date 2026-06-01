@@ -30,7 +30,7 @@ LidKeeper prevents your Windows laptop from sleeping when you close the lid **if
 Open PowerShell and run:
 
 ```powershell
-irm https://raw.githubusercontent.com/YOUR_USERNAME/LidKeeper/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/Luchioxy/LidKeeper/main/install.ps1 | iex
 ```
 
 > **Note:** Run as Administrator for full functionality. This downloads both scripts to a temp folder and launches the interactive setup.
@@ -39,7 +39,7 @@ irm https://raw.githubusercontent.com/YOUR_USERNAME/LidKeeper/main/install.ps1 |
 
 ```powershell
 # Clone the repo
-git clone https://github.com/YOUR_USERNAME/LidKeeper.git
+git clone https://github.com/Luchioxy/LidKeeper.git
 cd LidKeeper
 
 # Run setup (as Administrator)

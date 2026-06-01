@@ -8,7 +8,7 @@
     Downloads setup.ps1 and lid-monitor.ps1, then launches the interactive setup.
 #>
 
-$repo = "YOUR_USERNAME/LidKeeper"
+$repo = "Luchioxy/LidKeeper"
 $branch = "main"
 $baseRaw = "https://raw.githubusercontent.com/$repo/$branch"
 $tempDir = Join-Path $env:TEMP "LidKeeper"
