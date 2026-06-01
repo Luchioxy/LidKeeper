@@ -236,10 +236,10 @@ function Install-SmartMode {
 
     Ensure-Registry
     $current = Get-CurrentLidAction
-    Set-ItemProperty -Path $REG_BASE -Name "OriginalLidActionAC" -Value $current.AC -Force
-    Set-ItemProperty -Path $REG_BASE -Name "OriginalLidActionDC" -Value $current.DC -Force
-    Set-ItemProperty -Path $REG_BASE -Name "PowerSource" -Value $powerSource -Force
-    Set-ItemProperty -Path $REG_BASE -Name "Mode" -Value "Smart" -Force
+    New-ItemProperty -Path $REG_BASE -Name "OriginalLidActionAC" -Value $current.AC -PropertyType DWord -Force | Out-Null
+    New-ItemProperty -Path $REG_BASE -Name "OriginalLidActionDC" -Value $current.DC -PropertyType DWord -Force | Out-Null
+    New-ItemProperty -Path $REG_BASE -Name "PowerSource" -Value $powerSource -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $REG_BASE -Name "Mode" -Value "Smart" -PropertyType String -Force | Out-Null
 
     Write-Host (T 'SavedOriginal') -ForegroundColor Green
 
@@ -256,7 +256,7 @@ function Install-SmartMode {
 
     $trigger = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddMinutes(1)) `
         -RepetitionInterval (New-TimeSpan -Minutes 1) `
-        -RepetitionDuration ([TimeSpan]::MaxValue)
+        -RepetitionDuration (New-TimeSpan -Days 36500)
 
     $settings = New-ScheduledTaskSettingsSet `
         -AllowStartIfOnBatteries `
@@ -300,10 +300,10 @@ function Install-AlwaysOnMode {
 
     Ensure-Registry
     $current = Get-CurrentLidAction
-    Set-ItemProperty -Path $REG_BASE -Name "OriginalLidActionAC" -Value $current.AC -Force
-    Set-ItemProperty -Path $REG_BASE -Name "OriginalLidActionDC" -Value $current.DC -Force
-    Set-ItemProperty -Path $REG_BASE -Name "PowerSource" -Value $powerSource -Force
-    Set-ItemProperty -Path $REG_BASE -Name "Mode" -Value "AlwaysOn" -Force
+    New-ItemProperty -Path $REG_BASE -Name "OriginalLidActionAC" -Value $current.AC -PropertyType DWord -Force | Out-Null
+    New-ItemProperty -Path $REG_BASE -Name "OriginalLidActionDC" -Value $current.DC -PropertyType DWord -Force | Out-Null
+    New-ItemProperty -Path $REG_BASE -Name "PowerSource" -Value $powerSource -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $REG_BASE -Name "Mode" -Value "AlwaysOn" -PropertyType String -Force | Out-Null
 
     Set-LidAction -Value $LID_DO_NOTHING -PowerSource $powerSource
 

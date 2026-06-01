@@ -62,6 +62,10 @@ else {
     Write-Host "    Added 'lidkeeper' command to profile." -ForegroundColor Green
 }
 
+# Define function in current session so it works immediately
+Set-Item -Path Function:\global:lidkeeper -Value { & "$HOME\LidKeeper\setup.ps1" } -Force
+Write-Host "    'lidkeeper' command loaded in current session." -ForegroundColor Green
+
 Write-Host ""
 Write-Host "  Done!" -ForegroundColor Green
 Write-Host "  Installed to: $installDir" -ForegroundColor White
