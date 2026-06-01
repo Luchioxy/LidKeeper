@@ -1,31 +1,30 @@
 # LidKeeper
 
-> Keep your laptop awake when AI agents are running. No more interrupted tasks on lid close.
+> Close your laptop lid, keep your AI agents running, and control them from your phone.
 
 [中文说明](README_zh.md)
 
-## What It Does
+## The Problem
 
-LidKeeper prevents your Windows laptop from sleeping when you close the lid **if** an AI agent (Claude Code, Codex, WorkBuddy) is actively running. When all agents exit, normal sleep behavior resumes automatically.
+You're running Claude Code, Codex, or WorkBuddy on your laptop. You want to close the lid and walk away — maybe grab a coffee, move to the couch, or just keep your desk clean. But Windows puts the laptop to sleep when you close the lid, killing your agents mid-task.
 
-### Two Modes
+## The Solution
 
-| Mode | Behavior |
-|------|----------|
-| **Smart Mode** | Monitors agent processes every minute. Lid-close sleep is disabled only when agents are running. |
-| **Always-On Mode** | Disables lid-close sleep permanently. Use when you want the laptop awake regardless of agents. |
+LidKeeper intercepts the lid-close event and prevents sleep **when your AI agents are running**. When all agents exit, normal sleep behavior resumes automatically.
 
-### Supported Agents
+### The Workflow
 
-| Agent | Process Name |
-|-------|-------------|
-| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `claude` |
-| [Codex](https://openai.com/index/codex/) | `Codex`, `codex` |
-| [WorkBuddy](https://marvis.qq.com/) | `WorkBuddy` |
+```
+1. Start Claude Code / Codex / WorkBuddy on your laptop
+2. Close the lid — laptop stays awake
+3. Walk away with your phone
+4. Use SSH / remote desktop / web UI to monitor and control your agents
+5. When done, open the lid — or just let the agents finish and the laptop sleeps
+```
 
 ## Quick Start
 
-### One-Line Install (Recommended)
+### One-Line Install
 
 Open PowerShell and run:
 
@@ -38,31 +37,48 @@ This will:
 2. Add a `lidkeeper` command to your PowerShell profile
 3. Launch the interactive setup
 
-After installation, just type `lidkeeper` in any new PowerShell window to re-run setup (change mode, uninstall, etc.).
+After installation, just type `lidkeeper` in any PowerShell window to re-run setup.
 
-> **Note:** Run as Administrator for full functionality.
+> **Note:** The script will auto-request admin privileges when needed.
 
 ### Manual Install
 
 ```powershell
-# Clone the repo
 git clone https://github.com/Luchioxy/LidKeeper.git
 cd LidKeeper
-
-# Run setup (as Administrator)
 .\setup.ps1
 ```
 
+## Modes
+
+| Mode | Behavior |
+|------|----------|
+| **Smart Mode** | Monitors agent processes every minute. Lid-close sleep is disabled only when agents are running. |
+| **Always-On Mode** | Disables lid-close sleep permanently. |
+
+### Supported Agents
+
+| Agent | Process Name |
+|-------|-------------|
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `claude` |
+| [Codex](https://openai.com/index/codex/) | `Codex` |
+| [WorkBuddy](https://marvis.qq.com/) | `WorkBuddy` |
+
 ## Usage
 
-1. Run `setup.ps1` (or double-click `LidKeeper.bat`)
-2. Select a mode:
-   - `[1]` Smart Mode — auto-detects agents, toggles lid behavior
-   - `[2]` Always-On — permanently disable lid-close sleep
-   - `[3]` Uninstall — remove all settings, restore defaults
-3. Choose power source (plugged in / battery / both)
+```powershell
+# First time setup
+irm https://raw.githubusercontent.com/Luchioxy/LidKeeper/main/install.ps1 | iex
 
-That's it. The script saves your original settings before making changes, so uninstalling always restores the previous state.
+# Re-run setup anytime
+lidkeeper
+```
+
+The `lidkeeper` command gives you:
+- `[1]` Smart Mode — auto-detects agents, toggles lid behavior
+- `[2]` Always-On — permanently disable lid-close sleep
+- `[3]` Uninstall — remove all settings, restore defaults
+- `[0]` Exit
 
 ## How It Works
 
@@ -72,27 +88,18 @@ That's it. The script saves your original settings before making changes, so uni
 - If no agents are found → restores the original lid-close action
 - Settings are stored in `HKCU\SOFTWARE\LidKeeper` (registry)
 
-## Uninstall
-
-Run `setup.ps1` and select `[3] Uninstall`, or:
-
-```powershell
-# Remove the scheduled task
-Unregister-ScheduledTask -TaskName "LidKeeper-Monitor" -Confirm:$false
-
-# Remove registry config
-Remove-Item -Path "HKCU:\SOFTWARE\LidKeeper" -Recurse -Force
-```
-
 ## Requirements
 
 - Windows 10/11
 - PowerShell 5.1+
-- Administrator rights (for modifying power settings)
+- Administrator rights (auto-requested if needed)
 
 ## FAQ
 
-**Q: Does this work with the laptop on battery?**
+**Q: Can I control my laptop from my phone after closing the lid?**
+A: Yes! That's the main use case. Set up SSH, remote desktop, or use your agent's web UI. The laptop stays awake, so all network connections remain active.
+
+**Q: Does this work on battery?**
 A: Yes. You choose whether it applies to plugged-in, battery, or both during setup.
 
 **Q: What if I close the lid before the next check?**
@@ -103,6 +110,19 @@ A: Edit the `$AGENT_PROCESSES` array in `setup.ps1` and `lid-monitor.ps1`.
 
 **Q: Will this drain my battery?**
 A: In Smart Mode, the laptop only stays awake while agents are running. In Always-On Mode, yes — the laptop will not sleep on lid close.
+
+## Uninstall
+
+```powershell
+lidkeeper
+# Select [3] Uninstall
+```
+
+Or manually:
+```powershell
+Unregister-ScheduledTask -TaskName "LidKeeper-Monitor" -Confirm:$false
+Remove-Item -Path "HKCU:\SOFTWARE\LidKeeper" -Recurse -Force
+```
 
 ## License
 
