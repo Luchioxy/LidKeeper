@@ -83,6 +83,7 @@ The `lidkeeper` command gives you:
 - `[1]` Smart Mode — auto-detects agents, toggles lid behavior
 - `[2]` Always-On — permanently disable lid-close sleep
 - `[3]` Uninstall — remove all settings, restore defaults
+- `[4]` Configure Agents — manage monitored process list
 - `[0]` Exit
 
 ## How It Works
@@ -92,6 +93,8 @@ The `lidkeeper` command gives you:
 - If agents are detected → sets lid-close action to "Do nothing" via `powercfg`
 - If no agents are found → restores the original lid-close action
 - Settings are stored in `HKCU\SOFTWARE\LidKeeper` (registry)
+- Agent process list is stored in registry (`AgentProcesses` key) and read by the monitor script
+- On macOS/Linux, agent list is stored in `~/.lidkeeper/agents.conf`
 
 ## Requirements
 
@@ -113,7 +116,9 @@ A: Yes. You choose whether it applies to plugged-in, battery, or both during set
 A: The task checks every minute. If an agent is running, the lid action is already set to "Do nothing" — closing the lid won't trigger sleep.
 
 **Q: Can I add more processes to monitor?**
-A: Edit the `$AGENT_PROCESSES` array in `setup.ps1` and `lid-monitor.ps1`.
+A: Use `[4] Configure Agents` in the menu, or edit the config file directly:
+- Windows: registry key `HKCU\SOFTWARE\LidKeeper\AgentProcesses` (comma-separated)
+- macOS/Linux: `~/.lidkeeper/agents.conf` (one process name per line)
 
 **Q: Will this drain my battery?**
 A: In Smart Mode, the laptop only stays awake while agents are running. In Always-On Mode, yes — the laptop will not sleep on lid close.

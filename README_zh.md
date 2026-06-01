@@ -83,6 +83,7 @@ lidkeeper
 - `[1]` 智能模式 — 自动检测 Agent，智能切换合盖行为
 - `[2]` 常开模式 — 始终阻止合盖休眠
 - `[3]` 卸载 — 移除所有设置，恢复默认
+- `[4]` 配置 Agent — 管理监控的进程列表
 - `[0]` 退出
 
 ## 工作原理
@@ -92,6 +93,8 @@ lidkeeper
 - 检测到 Agent → 通过 `powercfg` 将合盖动作设为「不执行任何操作」
 - 未检测到 Agent → 恢复合盖动作为原始值
 - 设置存储在注册表 `HKCU\SOFTWARE\LidKeeper`
+- Agent 进程列表存储在注册表 `AgentProcesses` 键中，由监控脚本读取
+- macOS/Linux 的 Agent 列表存储在 `~/.lidkeeper/agents.conf`
 
 ## 系统要求
 
@@ -113,7 +116,9 @@ A: 可以。安装时可以选择仅插电、仅电池或两者都生效。
 A: 计划任务每分钟检测一次。只要 Agent 在运行，合盖动作就已经设为「不执行任何操作」了，合盖不会触发休眠。
 
 **Q: 能添加更多监控的进程吗？**
-A: 编辑 `setup.ps1` 和 `lid-monitor.ps1` 中的 `$AGENT_PROCESSES` 数组即可。
+A: 使用菜单中的 `[4] 配置 Agent`，或直接编辑配置文件：
+- Windows：注册表 `HKCU\SOFTWARE\LidKeeper\AgentProcesses`（逗号分隔）
+- macOS/Linux：`~/.lidkeeper/agents.conf`（每行一个进程名）
 
 **Q: 会不会很耗电？**
 A: 智能模式下，只有 Agent 运行时才会阻止休眠。常开模式下，笔记本合盖后不会休眠，会持续耗电。
