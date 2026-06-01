@@ -24,28 +24,33 @@ LidKeeper intercepts the lid-close event and prevents sleep **when your AI agent
 
 ## Quick Start
 
-### One-Line Install
-
-Open PowerShell and run:
+### Windows (PowerShell)
 
 ```powershell
 irm https://raw.githubusercontent.com/Luchioxy/LidKeeper/main/install.ps1 | iex
 ```
 
-This will:
-1. Download scripts to `~/LidKeeper`
-2. Add a `lidkeeper` command to your PowerShell profile
-3. Launch the interactive setup
+After installation, type `lidkeeper` to re-run setup.
 
-After installation, just type `lidkeeper` in any PowerShell window to re-run setup.
+### macOS / Linux (Bash)
 
-> **Note:** The script will auto-request admin privileges when needed.
+```bash
+curl -sL https://raw.githubusercontent.com/Luchioxy/LidKeeper/main/install.sh | bash
+```
 
-### Manual Install
+Or clone and run manually:
 
-```powershell
+```bash
 git clone https://github.com/Luchioxy/LidKeeper.git
 cd LidKeeper
+
+# macOS
+chmod +x macos/setup.sh && ./macos/setup.sh
+
+# Linux
+chmod +x linux/setup.sh && ./linux/setup.sh
+
+# Windows
 .\setup.ps1
 ```
 
