@@ -9,78 +9,74 @@
     Always-On Mode: disables lid-close sleep permanently.
 .NOTES
     Run as Administrator for full functionality.
-    Source: https://github.com/YOUR_USERNAME/LidKeeper
+    Source: https://github.com/Luchioxy/LidKeeper
 #>
 
 # ── Language Detection ─────────────────────────────────────────────────────────
 
 $script:Lang = if ($PSUICulture -match '^zh') { 'zh' } else { 'en' }
 
-$script:T = @{
-    # Banner
-    BannerTagline     = @{ en = 'No Sleep for AI Agents'                          ; zh = 'AI Agent 运行时合盖不休眠' }[$Lang]
-    # Status
-    StatusHeader      = @{ en = '  Current Status:'                               ; zh = '  当前状态：' }[$Lang]
-    LidActionPlugged  = @{ en = '    Lid action (plugged in):'                    ; zh = '    合盖动作（插电）:' }[$Lang]
-    LidActionBattery  = @{ en = '    Lid action (on battery):'                    ; zh = '    合盖动作（电池）:' }[$Lang]
-    TaskStatus        = @{ en = '    Scheduled task:'                              ; zh = '    计划任务状态:' }[$Lang]
-    TaskInstalled     = @{ en = 'Installed'                                        ; zh = '已安装' }[$Lang]
-    TaskNotInstalled  = @{ en = 'Not installed'                                    ; zh = '未安装' }[$Lang]
-    AgentsRunning     = @{ en = '    Running agents:'                              ; zh = '    运行中的 Agent:' }[$Lang]
-    AgentsNone        = @{ en = 'None'                                             ; zh = '无' }[$Lang]
-    # Menu
-    MenuHeader        = @{ en = '  Select mode:'                                  ; zh = '  请选择模式：' }[$Lang]
-    ModeSmart         = @{ en = '  [1] Smart Mode  - No sleep only when agents run'; zh = '  [1] 智能模式  — Agent 运行时才阻止合盖休眠' }[$Lang]
-    ModeAlwaysOn      = @{ en = '  [2] Always-On   - Never sleep on lid close'     ; zh = '  [2] 常开模式  — 始终阻止合盖休眠' }[$Lang]
-    ModeUninstall     = @{ en = '  [3] Uninstall    - Remove all settings'          ; zh = '  [3] 卸载      — 移除所有设置，恢复默认' }[$Lang]
-    ModeExit          = @{ en = '  [0] Exit'                                        ; zh = '  [0] 退出' }[$Lang]
-    PromptChoice      = @{ en = '  Choose (0-3)'                                   ; zh = '  请选择 (0-3)' }[$Lang]
-    InvalidChoice     = @{ en = '  Invalid choice.'                                ; zh = '  无效选择。' }[$Lang]
-    Goodbye           = @{ en = '  Goodbye!'                                       ; zh = '  再见！' }[$Lang]
-    PressKeyExit       = @{ en = '  Press any key to exit...'                      ; zh = '  按任意键退出...' }[$Lang]
-    # Power source
-    PowerSourceHeader = @{ en = '  Power source:'                                  ; zh = '  选择生效的电源场景：' }[$Lang]
-    PowerAC           = @{ en = '    [1] Plugged in only (recommended)'            ; zh = '    [1] 仅插电时（推荐，保护电池）' }[$Lang]
-    PowerDC           = @{ en = '    [2] On battery only'                           ; zh = '    [2] 仅电池时' }[$Lang]
-    PowerBoth         = @{ en = '    [3] Both'                                      ; zh = '    [3] 两者都' }[$Lang]
-    PromptPower       = @{ en = '  Choose (1-3)'                                   ; zh = '  请选择 (1-3)' }[$Lang]
-    InvalidDefaultAC   = @{ en = '  Invalid, defaulting to [1] Plugged in'         ; zh = '  无效选择，默认使用 [1] 仅插电' }[$Lang]
-    # Smart mode
-    SmartConfiguring   = @{ en = '  [Smart Mode] Configuring...'                   ; zh = '  [智能模式] 配置中...' }[$Lang]
-    SavedOriginal      = @{ en = '  Saved original lid settings for restore.'      ; zh = '  已保存当前合盖设置作为还原基准。' }[$Lang]
-    AgentDetected      = @{ en = '  Agent(s) detected, lid sleep disabled now.'    ; zh = '  检测到 agent 正在运行，已立即禁用合盖休眠。' }[$Lang]
-    SmartEnabled       = @{ en = '  Smart Mode enabled!'                            ; zh = '  智能模式已启用！' }[$Lang]
-    SmartDesc1         = @{ en = '  Task checks every 1 minute:'                   ; zh = '  计划任务将每 1 分钟检测一次 agent 进程：' }[$Lang]
-    SmartDesc2         = @{ en = '    - Agent running -> no sleep on lid close'     ; zh = '    - 有 agent 运行 → 合盖不休眠' }[$Lang]
-    SmartDesc3         = @{ en = '    - No agent       -> restore original behavior' ; zh = '    - 无 agent 运行 → 恢复原始合盖行为' }[$Lang]
-    PowerSourceLabel   = @{ en = '  Power source:'                                  ; zh = '  生效电源场景:' }[$Lang]
-    # Always-on mode
-    AlwaysConfiguring  = @{ en = '  [Always-On Mode] Configuring...'               ; zh = '  [常开模式] 配置中...' }[$Lang]
-    AlwaysEnabled      = @{ en = '  Always-On Mode enabled!'                       ; zh = '  常开模式已启用！' }[$Lang]
-    AlwaysDesc1        = @{ en = '  Lid action set to "Do nothing"'                ; zh = '  合盖动作已设为「不执行任何操作」' }[$Lang]
-    AlwaysDesc2        = @{ en = '  No background task needed. Setting is live.'    ; zh = '  无需后台任务，设置已直接生效。' }[$Lang]
-    # Uninstall
-    UninstallConfig     = @{ en = '  [Uninstall] Cleaning up...'                   ; zh = '  [卸载] 清理中...' }[$Lang]
-    TaskRemoved         = @{ en = '  Removed scheduled task:'                       ; zh = '  已移除计划任务:' }[$Lang]
-    TaskNotFound        = @{ en = '  Task not found, skipped.'                      ; zh = '  计划任务不存在，跳过。' }[$Lang]
-    RestoredPlugged     = @{ en = '  Restored plugged-in lid action:'              ; zh = '  已恢复插电合盖动作:' }[$Lang]
-    RestoredBattery     = @{ en = '  Restored battery lid action:'                 ; zh = '  已恢复电池合盖动作:' }[$Lang]
-    CleanedRegistry     = @{ en = '  Cleaned registry config.'                     ; zh = '  已清理注册表配置。' }[$Lang]
-    NoOriginalSettings  = @{ en = '  No original settings found, skipped restore.' ; zh = '  未找到原始设置，跳过恢复。' }[$Lang]
-    UninstallDone       = @{ en = '  Uninstall complete!'                          ; zh = '  卸载完成！' }[$Lang]
-    # Lid action names
-    LidDoNothing        = @{ en = 'Do nothing'                                     ; zh = '不执行任何操作' }[$Lang]
-    LidSleep            = @{ en = 'Sleep'                                          ; zh = '睡眠' }[$Lang]
-    LidHibernate        = @{ en = 'Hibernate'                                     ; zh = '休眠' }[$Lang]
-    LidShutdown         = @{ en = 'Shutdown'                                       ; zh = '关机' }[$Lang]
+function T {
+    param([string]$Key)
+    $texts = @{
+        'BannerTagline'      = @{ en = 'No Sleep for AI Agents';                            zh = ([char[]]@(0x41,0x49,0x0020,0x41,0x67,0x65,0x6E,0x74,0x0020,0x8FD0,0x884C,0x65F6,0x5408,0x76D6,0x4E0D,0x4F11,0x7720)) -join '' }
+        'StatusHeader'       = @{ en = '  Current Status:';                                 zh = '  ' + ([char[]]@(0x5F53,0x524D,0x72B6,0x6001,0xFF1A)) -join '' }
+        'LidActionPlugged'   = @{ en = '    Lid action (plugged in):';                      zh = '    ' + ([char[]]@(0x5408,0x76D6,0x52A8,0x4F5C,0xFF08,0x63D2,0x7535,0xFF09,0x003A)) -join '' }
+        'LidActionBattery'   = @{ en = '    Lid action (on battery):';                      zh = '    ' + ([char[]]@(0x5408,0x76D6,0x52A8,0x4F5C,0xFF08,0x7535,0x6C60,0xFF09,0x003A)) -join '' }
+        'TaskStatus'         = @{ en = '    Scheduled task:';                               zh = '    ' + ([char[]]@(0x8BA1,0x5212,0x4EFB,0x52A1,0x72B6,0x6001,0x003A)) -join '' }
+        'TaskInstalled'      = @{ en = 'Installed';                                        zh = ([char[]]@(0x5DF2,0x5B89,0x88C5)) -join '' }
+        'TaskNotInstalled'   = @{ en = 'Not installed';                                    zh = ([char[]]@(0x672A,0x5B89,0x88C5)) -join '' }
+        'AgentsRunning'      = @{ en = '    Running agents:';                              zh = '    ' + ([char[]]@(0x8FD0,0x884C,0x4E2D,0x0020,0x0041,0x0067,0x0065,0x006E,0x0074,0x003A)) -join '' }
+        'AgentsNone'         = @{ en = 'None';                                             zh = ([char[]]@(0x65E0)) -join '' }
+        'MenuHeader'         = @{ en = '  Select mode:';                                   zh = '  ' + ([char[]]@(0x8BF7,0x9009,0x62E9,0x6A21,0x5F0F,0xFF1A)) -join '' }
+        'ModeSmart'          = @{ en = '  [1] Smart Mode  - No sleep only when agents run'; zh = '  [1] ' + ([char[]]@(0x667A,0x80FD,0x6A21,0x5F0F,0x0020,0x0020,0x2014,0x0020,0x0041,0x0067,0x0065,0x006E,0x0074,0x0020,0x8FD0,0x884C,0x65F6,0x624D,0x963B,0x6B62,0x5408,0x76D6,0x4F11,0x7720)) -join '' }
+        'ModeAlwaysOn'       = @{ en = '  [2] Always-On   - Never sleep on lid close';     zh = '  [2] ' + ([char[]]@(0x5E38,0x5F00,0x6A21,0x5F0F,0x0020,0x0020,0x2014,0x0020,0x59CB,0x7EC8,0x963B,0x6B62,0x5408,0x76D6,0x4F11,0x7720)) -join '' }
+        'ModeUninstall'      = @{ en = '  [3] Uninstall    - Remove all settings';          zh = '  [3] ' + ([char[]]@(0x5378,0x8F7D,0x0020,0x0020,0x0020,0x0020,0x0020,0x2014,0x0020,0x79FB,0x9664,0x6240,0x6709,0x8BBE,0x7F6E,0xFF0C,0x6062,0x590D,0x9ED8,0x8BA4)) -join '' }
+        'ModeExit'           = @{ en = '  [0] Exit';                                       zh = '  [0] ' + ([char[]]@(0x9000,0x51FA)) -join '' }
+        'PromptChoice'       = @{ en = '  Choose (0-3)';                                   zh = '  ' + ([char[]]@(0x8BF7,0x9009,0x62E9,0x0020,0x0028,0x0030,0x002D,0x0033,0x0029)) -join '' }
+        'InvalidChoice'      = @{ en = '  Invalid choice.';                                zh = '  ' + ([char[]]@(0x65E0,0x6548,0x9009,0x62E9,0x3002)) -join '' }
+        'Goodbye'            = @{ en = '  Goodbye!';                                       zh = '  ' + ([char[]]@(0x518D,0x89C1,0xFF01)) -join '' }
+        'PressKeyExit'       = @{ en = '  Press any key to exit...';                       zh = '  ' + ([char[]]@(0x6309,0x4EFB,0x610F,0x952E,0x9000,0x51FA,0x2026)) -join '' }
+        'PowerSourceHeader'  = @{ en = '  Power source:';                                  zh = '  ' + ([char[]]@(0x9009,0x62E9,0x751F,0x6548,0x7684,0x7535,0x6E90,0x573A,0x666F,0xFF1A)) -join '' }
+        'PowerAC'            = @{ en = '    [1] Plugged in only (recommended)';            zh = '    [1] ' + ([char[]]@(0x4EC5,0x63D2,0x7535,0x65F6,0xFF08,0x63A8,0x8350,0xFF0C,0x4FDD,0x62A4,0x7535,0x6C60,0xFF09)) -join '' }
+        'PowerDC'            = @{ en = '    [2] On battery only';                           zh = '    [2] ' + ([char[]]@(0x4EC5,0x7535,0x6C60,0x65F6)) -join '' }
+        'PowerBoth'          = @{ en = '    [3] Both';                                      zh = '    [3] ' + ([char[]]@(0x4E24,0x8005,0x90FD)) -join '' }
+        'PromptPower'        = @{ en = '  Choose (1-3)';                                   zh = '  ' + ([char[]]@(0x8BF7,0x9009,0x62E9,0x0020,0x0028,0x0031,0x002D,0x0033,0x0029)) -join '' }
+        'InvalidDefaultAC'   = @{ en = '  Invalid, defaulting to [1] Plugged in';         zh = '  ' + ([char[]]@(0x65E0,0x6548,0x9009,0x62E9,0xFF0C,0x9ED8,0x8BA4,0x4F7F,0x7528,0x0020,0x005B,0x0031,0x005D,0x0020,0x4EC5,0x63D2,0x7535)) -join '' }
+        'SmartConfiguring'   = @{ en = '  [Smart Mode] Configuring...';                    zh = '  [' + ([char[]]@(0x667A,0x80FD,0x6A21,0x5F0F)) -join '' + '] ' + ([char[]]@(0x914D,0x7F6E,0x4E2D,0x2026)) -join '' }
+        'SavedOriginal'      = @{ en = '  Saved original lid settings for restore.';       zh = '  ' + ([char[]]@(0x5DF2,0x4FDD,0x5B58,0x5F53,0x524D,0x5408,0x76D6,0x8BBE,0x7F6E,0x4F5C,0x4E3A,0x8FD8,0x539F,0x57FA,0x51C6,0x3002)) -join '' }
+        'AgentDetected'      = @{ en = '  Agent(s) detected, lid sleep disabled now.';     zh = '  ' + ([char[]]@(0x68C0,0x6D4B,0x5230,0x0020,0x0061,0x0067,0x0065,0x006E,0x0074,0x0020,0x6B63,0x5728,0x8FD0,0x884C,0xFF0C,0x5DF2,0x7ACB,0x5373,0x7981,0x7528,0x5408,0x76D6,0x4F11,0x7720,0x3002)) -join '' }
+        'SmartEnabled'       = @{ en = '  Smart Mode enabled!';                             zh = '  ' + ([char[]]@(0x667A,0x80FD,0x6A21,0x5F0F,0x5DF2,0x542F,0x7528,0xFF01)) -join '' }
+        'SmartDesc1'         = @{ en = '  Task checks every 1 minute:';                    zh = '  ' + ([char[]]@(0x8BA1,0x5212,0x4EFB,0x52A1,0x5C06,0x6BCF,0x0020,0x0031,0x0020,0x5206,0x949F,0x68C0,0x6D4B,0x4E00,0x6B21,0x0020,0x0061,0x0067,0x0065,0x006E,0x0074,0x0020,0x8FDB,0x7A0B,0xFF1A)) -join '' }
+        'SmartDesc2'         = @{ en = '    - Agent running -> no sleep on lid close';      zh = '    - ' + ([char[]]@(0x6709,0x0020,0x0061,0x0067,0x0065,0x006E,0x0074,0x0020,0x8FD0,0x884C,0x0020,0x2192,0x0020,0x5408,0x76D6,0x4E0D,0x4F11,0x7720)) -join '' }
+        'SmartDesc3'         = @{ en = '    - No agent       -> restore original behavior';  zh = '    - ' + ([char[]]@(0x65E0,0x0020,0x0061,0x0067,0x0065,0x006E,0x0074,0x0020,0x8FD0,0x884C,0x0020,0x2192,0x0020,0x6062,0x590D,0x539F,0x59CB,0x5408,0x76D6,0x884C,0x4E3A)) -join '' }
+        'PowerSourceLabel'   = @{ en = '  Power source:';                                  zh = '  ' + ([char[]]@(0x751F,0x6548,0x7535,0x6E90,0x573A,0x666F,0x003A)) -join '' }
+        'AlwaysConfiguring'  = @{ en = '  [Always-On Mode] Configuring...';                zh = '  [' + ([char[]]@(0x5E38,0x5F00,0x6A21,0x5F0F)) -join '' + '] ' + ([char[]]@(0x914D,0x7F6E,0x4E2D,0x2026)) -join '' }
+        'AlwaysEnabled'      = @{ en = '  Always-On Mode enabled!';                        zh = '  ' + ([char[]]@(0x5E38,0x5F00,0x6A21,0x5F0F,0x5DF2,0x542F,0x7528,0xFF01)) -join '' }
+        'AlwaysDesc1'        = @{ en = '  Lid action set to "Do nothing"';                 zh = '  ' + ([char[]]@(0x5408,0x76D6,0x52A8,0x4F5C,0x5DF2,0x8BBE,0x4E3A,0x300C,0x4E0D,0x6267,0x884C,0x4EFB,0x4F55,0x64CD,0x4F5C,0x300D)) -join '' }
+        'AlwaysDesc2'        = @{ en = '  No background task needed. Setting is live.';     zh = '  ' + ([char[]]@(0x65E0,0x9700,0x540E,0x53F0,0x4EFB,0x52A1,0xFF0C,0x8BBE,0x7F6E,0x5DF2,0x76F4,0x63A5,0x751F,0x6548,0x3002)) -join '' }
+        'UninstallConfig'    = @{ en = '  [Uninstall] Cleaning up...';                     zh = '  [' + ([char[]]@(0x5378,0x8F7D)) -join '' + '] ' + ([char[]]@(0x6E05,0x7406,0x4E2D,0x2026)) -join '' }
+        'TaskRemoved'        = @{ en = '  Removed scheduled task:';                        zh = '  ' + ([char[]]@(0x5DF2,0x79FB,0x9664,0x8BA1,0x5212,0x4EFB,0x52A1,0x003A)) -join '' }
+        'TaskNotFound'       = @{ en = '  Task not found, skipped.';                       zh = '  ' + ([char[]]@(0x8BA1,0x5212,0x4EFB,0x52A1,0x4E0D,0x5B58,0x5728,0xFF0C,0x8DF3,0x8FC7,0x3002)) -join '' }
+        'RestoredPlugged'    = @{ en = '  Restored plugged-in lid action:';                zh = '  ' + ([char[]]@(0x5DF2,0x6062,0x590D,0x63D2,0x7535,0x5408,0x76D6,0x52A8,0x4F5C,0x003A)) -join '' }
+        'RestoredBattery'    = @{ en = '  Restored battery lid action:';                   zh = '  ' + ([char[]]@(0x5DF2,0x6062,0x590D,0x7535,0x6C60,0x5408,0x76D6,0x52A8,0x4F5C,0x003A)) -join '' }
+        'CleanedRegistry'    = @{ en = '  Cleaned registry config.';                       zh = '  ' + ([char[]]@(0x5DF2,0x6E05,0x7406,0x6CE8,0x518C,0x8868,0x914D,0x7F6E,0x3002)) -join '' }
+        'NoOriginalSettings' = @{ en = '  No original settings found, skipped restore.';   zh = '  ' + ([char[]]@(0x672A,0x627E,0x5230,0x539F,0x59CB,0x8BBE,0x7F6E,0xFF0C,0x8DF3,0x8FC7,0x6062,0x590D,0x3002)) -join '' }
+        'UninstallDone'      = @{ en = '  Uninstall complete!';                            zh = '  ' + ([char[]]@(0x5378,0x8F7D,0x5B8C,0x6210,0xFF01)) -join '' }
+        'LidDoNothing'       = @{ en = 'Do nothing';                                      zh = ([char[]]@(0x4E0D,0x6267,0x884C,0x4EFB,0x4F55,0x64CD,0x4F5C)) -join '' }
+        'LidSleep'           = @{ en = 'Sleep';                                           zh = ([char[]]@(0x7761,0x7720)) -join '' }
+        'LidHibernate'       = @{ en = 'Hibernate';                                      zh = ([char[]]@(0x4F11,0x7720)) -join '' }
+        'LidShutdown'        = @{ en = 'Shutdown';                                        zh = ([char[]]@(0x5173,0x673A)) -join '' }
+    }
+    return $texts[$Key][$script:Lang]
 }
 
 # Map lid action value to localized name
 $LID_ACTION_NAMES = @{
-    0 = $T.LidDoNothing
-    1 = $T.LidSleep
-    2 = $T.LidHibernate
-    3 = $T.LidShutdown
+    0 = T 'LidDoNothing'
+    1 = T 'LidSleep'
+    2 = T 'LidHibernate'
+    3 = T 'LidShutdown'
 }
 
 # ── Configuration ──────────────────────────────────────────────────────────────
@@ -110,7 +106,6 @@ function Get-ActivePowerSchemeGUID {
         }
     }
     catch {}
-    # Fallback: Balanced plan
     return "381b4222-f694-41f0-9685-ff5bb260df2e"
 }
 
@@ -126,7 +121,8 @@ function Write-Banner {
     Write-Host ""
     Write-Host "  ╔═══════════════════════════════════════════╗" -ForegroundColor Cyan
     Write-Host "  ║           LidKeeper v1.0                  ║" -ForegroundColor Cyan
-    Write-Host "  ║       $($T.BannerTagline.PadRight(29))║" -ForegroundColor Cyan
+    $tagline = T 'BannerTagline'
+    Write-Host "  ║       $($tagline.PadRight(29))║" -ForegroundColor Cyan
     Write-Host "  ╚═══════════════════════════════════════════╝" -ForegroundColor Cyan
     Write-Host ""
 }
@@ -138,11 +134,6 @@ function Ensure-Registry {
 }
 
 function Get-CurrentLidAction {
-    <#
-    .SYNOPSIS
-        Read current lid-close action from registry (AC and DC).
-        Returns @{ AC = <int>; DC = <int> }
-    #>
     $result = @{ AC = $LID_SLEEP; DC = $LID_SLEEP }
     $regPath = Get-LidActionRegPath
     try {
@@ -155,36 +146,23 @@ function Get-CurrentLidAction {
 }
 
 function Set-LidAction {
-    <#
-    .SYNOPSIS
-        Set lid-close action via powercfg.
-    .PARAMETER Value  0=Do nothing, 1=Sleep, 2=Hibernate, 3=Shutdown
-    .PARAMETER PowerSource  "AC", "DC", or "Both"
-    #>
     param(
         [int]$Value,
         [ValidateSet("AC", "DC", "Both")]
         [string]$PowerSource = "Both"
     )
 
-    $subGroup = $SUB_BUTTONS_GUID
-    $setting  = $LID_ACTION_GUID
-
     if ($PowerSource -eq "AC" -or $PowerSource -eq "Both") {
-        & powercfg /setacvalueindex SCHEME_CURRENT $subGroup $setting $Value 2>&1 | Out-Null
+        & powercfg /setacvalueindex SCHEME_CURRENT $SUB_BUTTONS_GUID $LID_ACTION_GUID $Value 2>&1 | Out-Null
     }
     if ($PowerSource -eq "DC" -or $PowerSource -eq "Both") {
-        & powercfg /setdcvalueindex SCHEME_CURRENT $subGroup $setting $Value 2>&1 | Out-Null
+        & powercfg /setdcvalueindex SCHEME_CURRENT $SUB_BUTTONS_GUID $LID_ACTION_GUID $Value 2>&1 | Out-Null
     }
 
     & powercfg /setactive SCHEME_CURRENT 2>&1 | Out-Null
 }
 
 function Test-AgentsRunning {
-    <#
-    .SYNOPSIS
-        Check if any AI agent process is currently running.
-    #>
     foreach ($name in $AGENT_PROCESSES) {
         if (Get-Process -Name $name -ErrorAction SilentlyContinue) {
             return $true
@@ -194,18 +172,14 @@ function Test-AgentsRunning {
 }
 
 function Show-CurrentStatus {
-    <#
-    .SYNOPSIS
-        Display current status information.
-    #>
     $current = Get-CurrentLidAction
     $taskExists = Get-ScheduledTask -TaskName $TASK_NAME -ErrorAction SilentlyContinue
 
-    Write-Host $T.StatusHeader -ForegroundColor Yellow
-    Write-Host "$($T.LidActionPlugged) $($LID_ACTION_NAMES[[int]$current.AC])" -ForegroundColor White
-    Write-Host "$($T.LidActionBattery) $($LID_ACTION_NAMES[[int]$current.DC])" -ForegroundColor White
-    $taskText = if ($taskExists) { $T.TaskInstalled } else { $T.TaskNotInstalled }
-    Write-Host "$($T.TaskStatus) $taskText" -ForegroundColor White
+    Write-Host (T 'StatusHeader') -ForegroundColor Yellow
+    Write-Host "$((T 'LidActionPlugged')) $($LID_ACTION_NAMES[[int]$current.AC])" -ForegroundColor White
+    Write-Host "$((T 'LidActionBattery')) $($LID_ACTION_NAMES[[int]$current.DC])" -ForegroundColor White
+    $taskText = if ($taskExists) { T 'TaskInstalled' } else { T 'TaskNotInstalled' }
+    Write-Host "$((T 'TaskStatus')) $taskText" -ForegroundColor White
 
     $agents = @()
     foreach ($name in $AGENT_PROCESSES) {
@@ -214,28 +188,28 @@ function Show-CurrentStatus {
         }
     }
     if ($agents.Count -gt 0) {
-        Write-Host "$($T.AgentsRunning) $($agents -join ', ')" -ForegroundColor Green
+        Write-Host "$((T 'AgentsRunning')) $($agents -join ', ')" -ForegroundColor Green
     }
     else {
-        Write-Host "$($T.AgentsRunning) $($T.AgentsNone)" -ForegroundColor DarkGray
+        Write-Host "$((T 'AgentsRunning')) $((T 'AgentsNone'))" -ForegroundColor DarkGray
     }
     Write-Host ""
 }
 
 function Read-PowerSourceChoice {
-    Write-Host $T.PowerSourceHeader -ForegroundColor Yellow
-    Write-Host $T.PowerAC
-    Write-Host $T.PowerDC
-    Write-Host $T.PowerBoth
+    Write-Host (T 'PowerSourceHeader') -ForegroundColor Yellow
+    Write-Host (T 'PowerAC')
+    Write-Host (T 'PowerDC')
+    Write-Host (T 'PowerBoth')
     Write-Host ""
-    $powerChoice = Read-Host $T.PromptPower
+    $powerChoice = Read-Host (T 'PromptPower')
 
     switch ($powerChoice) {
         "1" { return "AC" }
         "2" { return "DC" }
         "3" { return "Both" }
         default {
-            Write-Host $T.InvalidDefaultAC -ForegroundColor Red
+            Write-Host (T 'InvalidDefaultAC') -ForegroundColor Red
             return "AC"
         }
     }
@@ -244,17 +218,12 @@ function Read-PowerSourceChoice {
 # ── Mode Implementations ──────────────────────────────────────────────────────
 
 function Install-SmartMode {
-    <#
-    .SYNOPSIS
-        Smart Mode: register a scheduled task that monitors agent processes.
-    #>
-    Write-Host $T.SmartConfiguring -ForegroundColor Cyan
+    Write-Host (T 'SmartConfiguring') -ForegroundColor Cyan
     Write-Host ""
 
     $powerSource = Read-PowerSourceChoice
     Write-Host ""
 
-    # Save current settings
     Ensure-Registry
     $current = Get-CurrentLidAction
     Set-ItemProperty -Path $REG_BASE -Name "OriginalLidActionAC" -Value $current.AC -Force
@@ -262,15 +231,13 @@ function Install-SmartMode {
     Set-ItemProperty -Path $REG_BASE -Name "PowerSource" -Value $powerSource -Force
     Set-ItemProperty -Path $REG_BASE -Name "Mode" -Value "Smart" -Force
 
-    Write-Host $T.SavedOriginal -ForegroundColor Green
+    Write-Host (T 'SavedOriginal') -ForegroundColor Green
 
-    # If agents are running right now, apply immediately
     if (Test-AgentsRunning) {
         Set-LidAction -Value $LID_DO_NOTHING -PowerSource $powerSource
-        Write-Host $T.AgentDetected -ForegroundColor Green
+        Write-Host (T 'AgentDetected') -ForegroundColor Green
     }
 
-    # Register scheduled task
     Unregister-ScheduledTask -TaskName $TASK_NAME -Confirm:$false -ErrorAction SilentlyContinue
 
     $action = New-ScheduledTaskAction `
@@ -287,8 +254,8 @@ function Install-SmartMode {
         -StartWhenAvailable `
         -ExecutionTimeLimit (New-TimeSpan -Minutes 1)
 
-    $descText = if ($Lang -eq 'zh') {
-        "LidKeeper 智能模式：检测 AI agent 进程并自动管理合盖休眠行为"
+    $descText = if ($script:Lang -eq 'zh') {
+        ([char[]]@(0x4C,0x69,0x64,0x4B,0x65,0x65,0x70,0x65,0x72,0x0020,0x667A,0x80FD,0x6A21,0x5F0F,0xFF1A,0x68C0,0x6D4B,0x0020,0x41,0x49,0x0020,0x61,0x67,0x65,0x6E,0x74,0x0020,0x8FDB,0x7A0B,0x5E76,0x81EA,0x52A8,0x7BA1,0x7406,0x5408,0x76D6,0x4F11,0x7720,0x884C,0x4E3A)) -join ''
     } else {
         "LidKeeper Smart Mode: monitors AI agent processes and manages lid-close sleep"
     }
@@ -304,28 +271,23 @@ function Install-SmartMode {
 
     Write-Host ""
     Write-Host "  ══════════════════════════════════════════════" -ForegroundColor Green
-    Write-Host "  $($T.SmartEnabled)" -ForegroundColor Green
+    Write-Host "  $((T 'SmartEnabled'))" -ForegroundColor Green
     Write-Host ""
-    Write-Host $T.SmartDesc1 -ForegroundColor White
-    Write-Host $T.SmartDesc2 -ForegroundColor White
-    Write-Host $T.SmartDesc3 -ForegroundColor White
-    Write-Host "$($T.PowerSourceLabel) $powerSource" -ForegroundColor White
+    Write-Host (T 'SmartDesc1') -ForegroundColor White
+    Write-Host (T 'SmartDesc2') -ForegroundColor White
+    Write-Host (T 'SmartDesc3') -ForegroundColor White
+    Write-Host "$((T 'PowerSourceLabel')) $powerSource" -ForegroundColor White
     Write-Host "  ══════════════════════════════════════════════" -ForegroundColor Green
     Write-Host ""
 }
 
 function Install-AlwaysOnMode {
-    <#
-    .SYNOPSIS
-        Always-On Mode: disable lid-close sleep permanently.
-    #>
-    Write-Host $T.AlwaysConfiguring -ForegroundColor Cyan
+    Write-Host (T 'AlwaysConfiguring') -ForegroundColor Cyan
     Write-Host ""
 
     $powerSource = Read-PowerSourceChoice
     Write-Host ""
 
-    # Save current settings
     Ensure-Registry
     $current = Get-CurrentLidAction
     Set-ItemProperty -Path $REG_BASE -Name "OriginalLidActionAC" -Value $current.AC -Force
@@ -337,34 +299,28 @@ function Install-AlwaysOnMode {
 
     Write-Host ""
     Write-Host "  ══════════════════════════════════════════════" -ForegroundColor Green
-    Write-Host "  $($T.AlwaysEnabled)" -ForegroundColor Green
+    Write-Host "  $((T 'AlwaysEnabled'))" -ForegroundColor Green
     Write-Host ""
-    Write-Host $T.AlwaysDesc1 -ForegroundColor White
-    Write-Host "$($T.PowerSourceLabel) $powerSource" -ForegroundColor White
-    Write-Host $T.AlwaysDesc2 -ForegroundColor White
+    Write-Host (T 'AlwaysDesc1') -ForegroundColor White
+    Write-Host "$((T 'PowerSourceLabel')) $powerSource" -ForegroundColor White
+    Write-Host (T 'AlwaysDesc2') -ForegroundColor White
     Write-Host "  ══════════════════════════════════════════════" -ForegroundColor Green
     Write-Host ""
 }
 
 function Uninstall-All {
-    <#
-    .SYNOPSIS
-        Uninstall: remove scheduled task and restore original power settings.
-    #>
-    Write-Host $T.UninstallConfig -ForegroundColor Cyan
+    Write-Host (T 'UninstallConfig') -ForegroundColor Cyan
     Write-Host ""
 
-    # Remove scheduled task
     $task = Get-ScheduledTask -TaskName $TASK_NAME -ErrorAction SilentlyContinue
     if ($task) {
         Unregister-ScheduledTask -TaskName $TASK_NAME -Confirm:$false
-        Write-Host "$($T.TaskRemoved) $TASK_NAME" -ForegroundColor Green
+        Write-Host "$((T 'TaskRemoved')) $TASK_NAME" -ForegroundColor Green
     }
     else {
-        Write-Host $T.TaskNotFound -ForegroundColor DarkGray
+        Write-Host (T 'TaskNotFound') -ForegroundColor DarkGray
     }
 
-    # Restore original power settings
     $hasOriginal = Test-Path $REG_BASE
     if ($hasOriginal) {
         $origAC = Get-ItemProperty -Path $REG_BASE -Name "OriginalLidActionAC" -ErrorAction SilentlyContinue
@@ -372,25 +328,25 @@ function Uninstall-All {
 
         if ($null -ne $origAC) {
             & powercfg /setacvalueindex SCHEME_CURRENT $SUB_BUTTONS_GUID $LID_ACTION_GUID $origAC.OriginalLidActionAC 2>&1 | Out-Null
-            Write-Host "$($T.RestoredPlugged) $($LID_ACTION_NAMES[[int]$origAC.OriginalLidActionAC])" -ForegroundColor Green
+            Write-Host "$((T 'RestoredPlugged')) $($LID_ACTION_NAMES[[int]$origAC.OriginalLidActionAC])" -ForegroundColor Green
         }
         if ($null -ne $origDC) {
             & powercfg /setdcvalueindex SCHEME_CURRENT $SUB_BUTTONS_GUID $LID_ACTION_GUID $origDC.OriginalLidActionDC 2>&1 | Out-Null
-            Write-Host "$($T.RestoredBattery) $($LID_ACTION_NAMES[[int]$origDC.OriginalLidActionDC])" -ForegroundColor Green
+            Write-Host "$((T 'RestoredBattery')) $($LID_ACTION_NAMES[[int]$origDC.OriginalLidActionDC])" -ForegroundColor Green
         }
 
         & powercfg /setactive SCHEME_CURRENT 2>&1 | Out-Null
 
         Remove-Item -Path $REG_BASE -Recurse -Force -ErrorAction SilentlyContinue
-        Write-Host $T.CleanedRegistry -ForegroundColor Green
+        Write-Host (T 'CleanedRegistry') -ForegroundColor Green
     }
     else {
-        Write-Host $T.NoOriginalSettings -ForegroundColor DarkGray
+        Write-Host (T 'NoOriginalSettings') -ForegroundColor DarkGray
     }
 
     Write-Host ""
     Write-Host "  ══════════════════════════════════════════════" -ForegroundColor Green
-    Write-Host "  $($T.UninstallDone)" -ForegroundColor Green
+    Write-Host "  $((T 'UninstallDone'))" -ForegroundColor Green
     Write-Host "  ══════════════════════════════════════════════" -ForegroundColor Green
     Write-Host ""
 }
@@ -400,29 +356,29 @@ function Uninstall-All {
 Write-Banner
 Show-CurrentStatus
 
-Write-Host $T.MenuHeader -ForegroundColor Yellow
+Write-Host (T 'MenuHeader') -ForegroundColor Yellow
 Write-Host ""
-Write-Host $T.ModeSmart     -ForegroundColor White
-Write-Host $T.ModeAlwaysOn  -ForegroundColor White
-Write-Host $T.ModeUninstall -ForegroundColor White
-Write-Host $T.ModeExit      -ForegroundColor White
+Write-Host (T 'ModeSmart')     -ForegroundColor White
+Write-Host (T 'ModeAlwaysOn')  -ForegroundColor White
+Write-Host (T 'ModeUninstall') -ForegroundColor White
+Write-Host (T 'ModeExit')      -ForegroundColor White
 Write-Host ""
 
-$choice = Read-Host $T.PromptChoice
+$choice = Read-Host (T 'PromptChoice')
 
 switch ($choice) {
     "1" { Install-SmartMode }
     "2" { Install-AlwaysOnMode }
     "3" { Uninstall-All }
     "0" {
-        Write-Host $T.Goodbye -ForegroundColor Cyan
+        Write-Host (T 'Goodbye') -ForegroundColor Cyan
         exit 0
     }
     default {
-        Write-Host $T.InvalidChoice -ForegroundColor Red
+        Write-Host (T 'InvalidChoice') -ForegroundColor Red
         exit 1
     }
 }
 
-Write-Host $T.PressKeyExit -ForegroundColor DarkGray
+Write-Host (T 'PressKeyExit') -ForegroundColor DarkGray
 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
