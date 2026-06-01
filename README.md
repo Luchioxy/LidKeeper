@@ -6,11 +6,11 @@
 
 ## The Problem
 
-You're running Claude Code, Codex, or WorkBuddy on your laptop. You want to close the lid and walk away — maybe grab a coffee, move to the couch, or just keep your desk clean. But Windows puts the laptop to sleep when you close the lid, killing your agents mid-task.
+You're running Claude Code, Codex, or WorkBuddy on your laptop. You want to close the lid and walk away — maybe grab a coffee, move to the couch, or just keep your desk clean. But your OS may put the laptop to sleep when you close the lid, killing your agents mid-task.
 
 ## The Solution
 
-LidKeeper intercepts the lid-close event and prevents sleep **when your AI agents are running**. When all agents exit, normal sleep behavior resumes automatically.
+LidKeeper prevents lid-close sleep **when your AI agents are running**. When all agents exit, normal sleep behavior resumes automatically. On desktop Macs, where there is no lid-close event, Smart Mode prevents idle sleep instead.
 
 ### The Workflow
 
@@ -35,7 +35,17 @@ After installation, type `lidkeeper` to re-run setup.
 ### macOS / Linux (Bash)
 
 ```bash
-curl -sL https://raw.githubusercontent.com/Luchioxy/LidKeeper/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Luchioxy/LidKeeper/main/install.sh | bash
+```
+
+Non-interactive install:
+
+```bash
+# Smart Mode
+curl -fsSL https://raw.githubusercontent.com/Luchioxy/LidKeeper/main/install.sh | bash -s -- --smart
+
+# Always-On Mode
+curl -fsSL https://raw.githubusercontent.com/Luchioxy/LidKeeper/main/install.sh | bash -s -- --always
 ```
 
 Or clone and run manually:
@@ -58,8 +68,8 @@ chmod +x linux/setup.sh && ./linux/setup.sh
 
 | Mode | Behavior |
 |------|----------|
-| **Smart Mode** | Monitors agent processes every minute. Lid-close sleep is disabled only when agents are running. |
-| **Always-On Mode** | Disables lid-close sleep permanently. |
+| **Smart Mode** | Monitors agent processes every minute. Lid-close or idle sleep is disabled only when agents are running. |
+| **Always-On Mode** | Disables lid-close sleep permanently, or standby/autopoweroff sleep on desktop Macs. |
 
 ### Supported Agents
 
@@ -71,6 +81,8 @@ chmod +x linux/setup.sh && ./linux/setup.sh
 
 ## Usage
 
+### Windows
+
 ```powershell
 # First time setup
 irm https://raw.githubusercontent.com/Luchioxy/LidKeeper/main/install.ps1 | iex
@@ -79,7 +91,20 @@ irm https://raw.githubusercontent.com/Luchioxy/LidKeeper/main/install.ps1 | iex
 lidkeeper
 ```
 
-The `lidkeeper` command gives you:
+### macOS / Linux
+
+```bash
+# Interactive menu
+curl -fsSL https://raw.githubusercontent.com/Luchioxy/LidKeeper/main/install.sh | bash
+
+# Enable Smart Mode directly
+curl -fsSL https://raw.githubusercontent.com/Luchioxy/LidKeeper/main/install.sh | bash -s -- --smart
+
+# Uninstall directly
+curl -fsSL https://raw.githubusercontent.com/Luchioxy/LidKeeper/main/install.sh | bash -s -- --uninstall
+```
+
+The setup menu gives you:
 - `[1]` Smart Mode — auto-detects agents, toggles lid behavior
 - `[2]` Always-On — permanently disable lid-close sleep
 - `[3]` Uninstall — remove all settings, restore defaults
@@ -94,7 +119,10 @@ The `lidkeeper` command gives you:
 - If no agents are found → restores the original lid-close action
 - Settings are stored in `HKCU\SOFTWARE\LidKeeper` (registry)
 - Agent process list is stored in registry (`AgentProcesses` key) and read by the monitor script
-- On macOS/Linux, agent list is stored in `~/.lidkeeper/agents.conf`
+- On macOS, a LaunchAgent runs every minute and uses `caffeinate` while agents are running
+- On Linux, a systemd user timer runs every minute and uses `systemd-inhibit` while agents are running
+- On macOS/Linux, the agent list is stored in `~/.lidkeeper/agents.conf`
+- On desktop Macs such as Mac mini, there is no lid-close event; Smart Mode still prevents idle sleep while agents run
 
 ## Requirements
 
@@ -110,10 +138,10 @@ The `lidkeeper` command gives you:
 A: Yes! That's the main use case. Set up SSH, remote desktop, or use your agent's web UI. The laptop stays awake, so all network connections remain active.
 
 **Q: Does this work on battery?**
-A: Yes. You choose whether it applies to plugged-in, battery, or both during setup.
+A: On laptops, yes, but the exact power-source behavior depends on the platform. Windows manages AC and battery lid actions through power settings. macOS uses `caffeinate`, and Linux uses `systemd-inhibit`. Desktop Macs such as Mac mini have no battery or lid-close event.
 
 **Q: What if I close the lid before the next check?**
-A: The task checks every minute. If an agent is running, the lid action is already set to "Do nothing" — closing the lid won't trigger sleep.
+A: Smart Mode checks every minute. After starting an agent, wait for the next check before closing the lid. Once the agent has been detected, sleep prevention stays active until all monitored agents exit.
 
 **Q: Can I add more processes to monitor?**
 A: Use `[4] Configure Agents` in the menu, or edit the config file directly:
@@ -128,6 +156,12 @@ A: In Smart Mode, the laptop only stays awake while agents are running. In Alway
 ```powershell
 lidkeeper
 # Select [3] Uninstall
+```
+
+macOS / Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Luchioxy/LidKeeper/main/install.sh | bash -s -- --uninstall
 ```
 
 Or manually:

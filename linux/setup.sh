@@ -14,6 +14,7 @@ SERVICE_NAME="lidkeeper-monitor"
 SERVICE_PATH="$HOME/.config/systemd/user/$SERVICE_NAME.service"
 TIMER_PATH="$HOME/.config/systemd/user/$SERVICE_NAME.timer"
 LOG_FILE="$INSTALL_DIR/lidkeeper.log"
+ASSUME_YES=false
 
 # Default agent process names (case-sensitive on Linux)
 DEFAULT_AGENT_PROCESSES=("claude" "Codex" "WorkBuddy")
@@ -65,6 +66,11 @@ check_agents_running() {
     return 1
 }
 
+kill_lidkeeper_inhibit() {
+    pkill -f "lidkeeper-inhibit" 2>/dev/null || true
+    pkill -f "systemd-inhibit .*--who=LidKeeper" 2>/dev/null || true
+}
+
 # Load agent list from config (or use defaults)
 load_agents
 
@@ -90,6 +96,7 @@ install_smart_mode() {
 INSTALL_DIR="$HOME/.lidkeeper"
 PID_FILE="$INSTALL_DIR/inhibit.pid"
 LOG_FILE="$INSTALL_DIR/lidkeeper.log"
+LOCK_DIR="$INSTALL_DIR/monitor.lock"
 
 # Load agents from config file, or use defaults
 AGENT_PROCESSES=()
@@ -107,16 +114,46 @@ log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG_FILE"
 }
 
+acquire_lock() {
+    if mkdir "$LOCK_DIR" 2>/dev/null; then
+        echo "$$" > "$LOCK_DIR/pid"
+        trap 'rm -rf "$LOCK_DIR"' EXIT
+        return 0
+    fi
+
+    local lock_pid
+    lock_pid=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
+    if [ -n "$lock_pid" ] && ! kill -0 "$lock_pid" 2>/dev/null; then
+        rm -rf "$LOCK_DIR"
+        if mkdir "$LOCK_DIR" 2>/dev/null; then
+            echo "$$" > "$LOCK_DIR/pid"
+            trap 'rm -rf "$LOCK_DIR"' EXIT
+            return 0
+        fi
+    fi
+
+    exit 0
+}
+
 # Kill tracked inhibit process if it exists
 kill_tracked() {
     if [ -f "$PID_FILE" ]; then
         local pid
         pid=$(cat "$PID_FILE")
         if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-            kill "$pid" 2>/dev/null || true
+            local args
+            args=$(ps -p "$pid" -o args= 2>/dev/null || true)
+            if [[ "$args" == *"lidkeeper-inhibit"* || "$args" == *"systemd-inhibit --what=idle:sleep:handle-lid-switch --who=LidKeeper"* ]]; then
+                kill "$pid" 2>/dev/null || true
+            fi
         fi
         rm -f "$PID_FILE"
     fi
+}
+
+kill_lidkeeper_inhibit() {
+    pkill -f "lidkeeper-inhibit" 2>/dev/null || true
+    pkill -f "systemd-inhibit .*--who=LidKeeper" 2>/dev/null || true
 }
 
 check_agents_running() {
@@ -134,23 +171,30 @@ is_tracked_alive() {
         local pid
         pid=$(cat "$PID_FILE")
         if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-            return 0
+            local args
+            args=$(ps -p "$pid" -o args= 2>/dev/null || true)
+            if [[ "$args" == *"lidkeeper-inhibit"* || "$args" == *"systemd-inhibit --what=idle:sleep:handle-lid-switch --who=LidKeeper"* ]]; then
+                return 0
+            fi
         fi
         rm -f "$PID_FILE"
     fi
     return 1
 }
 
+acquire_lock
+
 if check_agents_running; then
     # Only start new inhibit if not already running
     if ! is_tracked_alive; then
-        systemd-inhibit --what=idle:sleep:handle-lid-switch --who=LidKeeper --why="AI Agent running" sleep infinity &
+        bash -c 'exec -a lidkeeper-inhibit systemd-inhibit --what=idle:sleep:handle-lid-switch --who=LidKeeper --why="AI Agent running" sleep infinity' &
         echo $! > "$PID_FILE"
         log "Agents running - started inhibit (PID: $!)"
     fi
 else
     # No agents - allow sleep
     kill_tracked
+    kill_lidkeeper_inhibit
     log "No agents - allowing sleep"
 fi
 EOF
@@ -180,27 +224,26 @@ OnUnitActiveSec=1min
 WantedBy=timers.target
 EOF
 
+    # If agents are running now, prevent sleep immediately
+    if check_agents_running; then
+        "$MONITOR_SCRIPT"
+        echo -e "  ${GREEN}Agent(s) detected, sleep prevented now.${NC}"
+    fi
+
     # Enable and start the timer
     systemctl --user daemon-reload
     systemctl --user enable "$SERVICE_NAME.timer"
     systemctl --user start "$SERVICE_NAME.timer"
 
     # Enable linger so timer survives user logout
-    sudo loginctl enable-linger "$(whoami)" 2>/dev/null || true
-
-    # If agents are running now, prevent sleep immediately
-    if check_agents_running; then
-        systemd-inhibit --what=idle:sleep:handle-lid-switch --who=LidKeeper --why="AI Agent running" sleep infinity &
-        echo $! > "$PID_FILE"
-        echo -e "  ${GREEN}Agent(s) detected, sleep prevented now.${NC}"
-    fi
+    sudo -n loginctl enable-linger "$(whoami)" 2>/dev/null || true
 
     echo ""
     echo -e "  ${GREEN}══════════════════════════════════════════════${NC}"
     echo -e "  ${GREEN}Smart Mode enabled!${NC}"
     echo ""
     echo "  Monitor runs every 60 seconds:"
-    echo "    - Agent running -> no sleep on lid close"
+    echo "    - Agent running -> sleep is prevented"
     echo "    - No agent      -> restore normal behavior"
     echo ""
     echo "  Log file: $LOG_FILE"
@@ -222,10 +265,16 @@ install_always_on_mode() {
     echo -e "  ${YELLOW}Warning: This modifies /etc/systemd/logind.conf (system-wide).${NC}"
     echo -e "  ${YELLOW}Restarting systemd-logind will briefly disconnect active sessions.${NC}"
     echo ""
-    read -p "  Continue? [y/N]: " confirm
-    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-        echo "  Cancelled."
-        return
+    if [ "$ASSUME_YES" != true ]; then
+        if ! read -r -p "  Continue? [y/N]: " confirm; then
+            echo ""
+            echo -e "  ${RED}No input available. Run this script from an interactive terminal.${NC}"
+            return
+        fi
+        if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+            echo "  Cancelled."
+            return
+        fi
     fi
     echo ""
 
@@ -286,10 +335,15 @@ uninstall_all() {
         local pid
         pid=$(cat "$PID_FILE")
         if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-            kill "$pid" 2>/dev/null || true
+            local args
+            args=$(ps -p "$pid" -o args= 2>/dev/null || true)
+            if [[ "$args" == *"lidkeeper-inhibit"* || "$args" == *"systemd-inhibit --what=idle:sleep:handle-lid-switch --who=LidKeeper"* ]]; then
+                kill "$pid" 2>/dev/null || true
+            fi
         fi
         rm -f "$PID_FILE"
     fi
+    kill_lidkeeper_inhibit
 
     # Restore original logind.conf if backup exists
     if [ -f "$INSTALL_DIR/logind.conf.bak" ]; then
@@ -326,7 +380,9 @@ configure_agents() {
     echo ""
     local new_agents=()
     while true; do
-        read -p "  > " proc
+        if ! read -r -p "  > " proc; then
+            break
+        fi
         [ -z "$proc" ] && break
         new_agents+=("$proc")
     done
@@ -365,7 +421,52 @@ show_status() {
     echo ""
 }
 
+show_help() {
+    echo "Usage: setup.sh [--smart|--always|--uninstall|--help]"
+    echo ""
+    echo "Options:"
+    echo "  --smart      Enable Smart Mode"
+    echo "  --always     Enable Always-On Mode"
+    echo "  --uninstall  Remove LidKeeper settings"
+    echo "  --help       Show this help"
+    echo ""
+    echo "Without an option, setup.sh opens the interactive menu."
+}
+
 # ── Main ──────────────────────────────────────────────────────────────────────
+
+case "${1:-}" in
+    --smart|smart|1)
+        print_banner
+        install_smart_mode
+        show_status
+        exit 0
+        ;;
+    --always|always|2)
+        ASSUME_YES=true
+        print_banner
+        install_always_on_mode
+        show_status
+        exit 0
+        ;;
+    --uninstall|uninstall|3)
+        print_banner
+        uninstall_all
+        exit 0
+        ;;
+    --help|-h|help)
+        show_help
+        exit 0
+        ;;
+    "")
+        ;;
+    *)
+        echo -e "  ${RED}Unknown option: $1${NC}"
+        echo ""
+        show_help
+        exit 1
+        ;;
+esac
 
 print_banner
 show_status
@@ -380,7 +481,11 @@ while true; do
     echo "    [0] Exit"
     echo ""
 
-    read -p "  Choose (0-4): " choice
+    if ! read -r -p "  Choose (0-4): " choice; then
+        echo ""
+        echo -e "  ${RED}No input available. Run this script from an interactive terminal.${NC}"
+        exit 1
+    fi
 
     case $choice in
         1) install_smart_mode ;;

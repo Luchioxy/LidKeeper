@@ -53,13 +53,33 @@ case $OS in
         SETUP_FILE="$TEMP_DIR/setup.sh"
 
         echo "  Downloading setup script..."
-        if curl -sL "$SETUP_URL" -o "$SETUP_FILE"; then
+        if curl -fsSL "$SETUP_URL" -o "$SETUP_FILE"; then
             chmod +x "$SETUP_FILE"
             echo -e "  ${GREEN}Download complete.${NC}"
             echo ""
-            bash "$SETUP_FILE"
+            if [ "$#" -gt 0 ]; then
+                if [ -r /dev/tty ]; then
+                    bash "$SETUP_FILE" "$@" < /dev/tty
+                else
+                    bash "$SETUP_FILE" "$@"
+                fi
+            elif [ -r /dev/tty ]; then
+                bash "$SETUP_FILE" < /dev/tty
+            else
+                echo -e "  ${RED}Interactive mode requires a terminal.${NC}"
+                echo ""
+                echo "  Try downloading and running the installer directly:"
+                echo "    curl -fsSL $BASE_URL/install.sh -o /tmp/lidkeeper-install.sh"
+                echo "    bash /tmp/lidkeeper-install.sh"
+                echo ""
+                echo "  Or choose a non-interactive mode:"
+                echo "    curl -fsSL $BASE_URL/install.sh | bash -s -- --smart"
+                echo ""
+                exit 1
+            fi
         else
             echo -e "  ${RED}Failed to download setup script.${NC}"
+            echo "  URL: $SETUP_URL"
             exit 1
         fi
         ;;

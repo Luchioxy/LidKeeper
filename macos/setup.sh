@@ -64,6 +64,27 @@ check_agents_running() {
     return 1
 }
 
+has_clamshell() {
+    ioreg -r -k AppleClamshellState 2>/dev/null | grep -q '"AppleClamshellState"'
+}
+
+print_smart_behavior() {
+    if has_clamshell; then
+        echo "    - Agent running -> sleep is prevented while the lid is closed"
+    else
+        echo "    - Agent running -> idle sleep is prevented"
+    fi
+    echo "    - No agent      -> restore normal behavior"
+}
+
+always_on_description() {
+    if has_clamshell; then
+        echo "Never sleep on lid close"
+    else
+        echo "Disable standby/autopoweroff"
+    fi
+}
+
 # Load agent list from config (or use defaults)
 load_agents
 
@@ -75,6 +96,7 @@ install_smart_mode() {
 
     # Create install directory
     mkdir -p "$INSTALL_DIR"
+    mkdir -p "$HOME/Library/LaunchAgents"
 
     # Save original pmset settings for restore
     pmset -g | grep -E "^\s*(sleep|disablesleep|disksleep)" > "$INSTALL_DIR/original_smart_pmset.txt" 2>/dev/null || true
@@ -92,6 +114,7 @@ install_smart_mode() {
 INSTALL_DIR="$HOME/.lidkeeper"
 PID_FILE="$INSTALL_DIR/caffeinate.pid"
 LOG_FILE="$INSTALL_DIR/lidkeeper.log"
+LOCK_DIR="$INSTALL_DIR/monitor.lock"
 
 # Load agents from config file, or use defaults
 AGENT_PROCESSES=()
@@ -109,16 +132,49 @@ log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG_FILE"
 }
 
+acquire_lock() {
+    if mkdir "$LOCK_DIR" 2>/dev/null; then
+        echo "$$" > "$LOCK_DIR/pid"
+        trap 'rm -rf "$LOCK_DIR"' EXIT
+        return 0
+    fi
+
+    local lock_pid
+    lock_pid=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
+    if [ -n "$lock_pid" ] && ! kill -0 "$lock_pid" 2>/dev/null; then
+        rm -rf "$LOCK_DIR"
+        if mkdir "$LOCK_DIR" 2>/dev/null; then
+            echo "$$" > "$LOCK_DIR/pid"
+            trap 'rm -rf "$LOCK_DIR"' EXIT
+            return 0
+        fi
+    fi
+
+    exit 0
+}
+
 # Kill tracked caffeinate process if it exists
 kill_tracked() {
     if [ -f "$PID_FILE" ]; then
         local pid
         pid=$(cat "$PID_FILE")
         if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-            kill "$pid" 2>/dev/null || true
+            local args
+            args=$(ps -p "$pid" -o args= 2>/dev/null || true)
+            if [[ "$args" == *"lidkeeper-caffeinate"* || "$args" == *"caffeinate -i -s"* ]]; then
+                kill "$pid" 2>/dev/null || true
+            fi
         fi
         rm -f "$PID_FILE"
     fi
+}
+
+kill_lidkeeper_caffeinate() {
+    pgrep -f "lidkeeper-caffeinate" 2>/dev/null | while IFS= read -r pid; do
+        [ -n "$pid" ] || continue
+        [ "$pid" = "$$" ] && continue
+        kill "$pid" 2>/dev/null || true
+    done
 }
 
 check_agents_running() {
@@ -136,23 +192,30 @@ is_tracked_alive() {
         local pid
         pid=$(cat "$PID_FILE")
         if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-            return 0
+            local args
+            args=$(ps -p "$pid" -o args= 2>/dev/null || true)
+            if [[ "$args" == *"lidkeeper-caffeinate"* || "$args" == *"caffeinate -i -s"* ]]; then
+                return 0
+            fi
         fi
         rm -f "$PID_FILE"
     fi
     return 1
 }
 
+acquire_lock
+
 if check_agents_running; then
     # Only start new caffeinate if not already running
     if ! is_tracked_alive; then
-        caffeinate -i -s &
+        bash -c 'exec -a lidkeeper-caffeinate caffeinate -i -s' &
         echo $! > "$PID_FILE"
         log "Agents running - started caffeinate (PID: $!)"
     fi
 else
     # No agents - stop preventing sleep
     kill_tracked
+    kill_lidkeeper_caffeinate
     log "No agents - allowing sleep"
 fi
 EOF
@@ -184,16 +247,15 @@ EOF
 </plist>
 EOF
 
+    # If agents are running now, prevent sleep immediately
+    if check_agents_running; then
+        "$MONITOR_SCRIPT"
+        echo -e "  ${GREEN}Agent(s) detected, sleep prevented now.${NC}"
+    fi
+
     # Load the LaunchAgent (use modern bootstrap if available)
     if command -v launchctl &> /dev/null; then
         launchctl bootstrap gui/$(id -u) "$PLIST_PATH" 2>/dev/null || launchctl load "$PLIST_PATH" 2>/dev/null || true
-    fi
-
-    # If agents are running now, prevent sleep immediately
-    if check_agents_running; then
-        caffeinate -i -s &
-        echo $! > "$PID_FILE"
-        echo -e "  ${GREEN}Agent(s) detected, sleep prevented now.${NC}"
     fi
 
     echo ""
@@ -201,8 +263,7 @@ EOF
     echo -e "  ${GREEN}Smart Mode enabled!${NC}"
     echo ""
     echo "  Monitor runs every 60 seconds:"
-    echo "    - Agent running -> no sleep on lid close"
-    echo "    - No agent      -> restore normal behavior"
+    print_smart_behavior
     echo ""
     echo "  Log file: $LOG_FILE"
     echo -e "  ${GREEN}══════════════════════════════════════════════${NC}"
@@ -230,8 +291,13 @@ install_always_on_mode() {
     echo -e "  ${GREEN}══════════════════════════════════════════════${NC}"
     echo -e "  ${GREEN}Always-On Mode enabled!${NC}"
     echo ""
-    echo "  Lid close will not cause sleep."
-    echo "  Idle sleep still works normally."
+    if has_clamshell; then
+        echo "  Lid close will not cause sleep."
+        echo "  Idle sleep still works normally."
+    else
+        echo "  Desktop Mac detected; lid-close settings do not apply."
+        echo "  Standby and autopoweroff sleep are disabled."
+    fi
     echo -e "  ${GREEN}══════════════════════════════════════════════${NC}"
     echo ""
 }
@@ -252,10 +318,20 @@ uninstall_all() {
         local pid
         pid=$(cat "$PID_FILE")
         if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-            kill "$pid" 2>/dev/null || true
+            local args
+            args=$(ps -p "$pid" -o args= 2>/dev/null || true)
+            if [[ "$args" == *"lidkeeper-caffeinate"* || "$args" == *"caffeinate -i -s"* ]]; then
+                kill "$pid" 2>/dev/null || true
+            fi
         fi
         rm -f "$PID_FILE"
     fi
+
+    pgrep -f "lidkeeper-caffeinate" 2>/dev/null | while IFS= read -r pid; do
+        [ -n "$pid" ] || continue
+        [ "$pid" = "$$" ] && continue
+        kill "$pid" 2>/dev/null || true
+    done
 
     # Restore original settings based on which mode was installed
     local restored=false
@@ -320,7 +396,9 @@ configure_agents() {
     echo ""
     local new_agents=()
     while true; do
-        read -p "  > " proc
+        if ! read -r -p "  > " proc; then
+            break
+        fi
         [ -z "$proc" ] && break
         new_agents+=("$proc")
     done
@@ -354,7 +432,51 @@ show_status() {
     echo ""
 }
 
+show_help() {
+    echo "Usage: setup.sh [--smart|--always|--uninstall|--help]"
+    echo ""
+    echo "Options:"
+    echo "  --smart      Enable Smart Mode"
+    echo "  --always     Enable Always-On Mode"
+    echo "  --uninstall  Remove LidKeeper settings"
+    echo "  --help       Show this help"
+    echo ""
+    echo "Without an option, setup.sh opens the interactive menu."
+}
+
 # ── Main ──────────────────────────────────────────────────────────────────────
+
+case "${1:-}" in
+    --smart|smart|1)
+        print_banner
+        install_smart_mode
+        show_status
+        exit 0
+        ;;
+    --always|always|2)
+        print_banner
+        install_always_on_mode
+        show_status
+        exit 0
+        ;;
+    --uninstall|uninstall|3)
+        print_banner
+        uninstall_all
+        exit 0
+        ;;
+    --help|-h|help)
+        show_help
+        exit 0
+        ;;
+    "")
+        ;;
+    *)
+        echo -e "  ${RED}Unknown option: $1${NC}"
+        echo ""
+        show_help
+        exit 1
+        ;;
+esac
 
 print_banner
 show_status
@@ -363,13 +485,17 @@ while true; do
     echo "  Select mode:"
     echo ""
     echo "    [1] Smart Mode  - No sleep only when agents run"
-    echo "    [2] Always-On   - Never sleep on lid close"
+    echo "    [2] Always-On   - $(always_on_description)"
     echo "    [3] Uninstall   - Remove all settings"
     echo "    [4] Configure Agents  - Manage monitored process list"
     echo "    [0] Exit"
     echo ""
 
-    read -p "  Choose (0-4): " choice
+    if ! read -r -p "  Choose (0-4): " choice; then
+        echo ""
+        echo -e "  ${RED}No input available. Run this script from an interactive terminal.${NC}"
+        exit 1
+    fi
 
     case $choice in
         1) install_smart_mode ;;
