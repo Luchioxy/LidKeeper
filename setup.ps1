@@ -79,6 +79,22 @@ $LID_ACTION_NAMES = @{
     3 = T 'LidShutdown'
 }
 
+# ── Admin Check ────────────────────────────────────────────────────────────────
+
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if (-not $isAdmin) {
+    Write-Host ""
+    Write-Host "  LidKeeper needs administrator privileges to register scheduled tasks." -ForegroundColor Yellow
+    Write-Host "  Re-launching as admin..." -ForegroundColor Yellow
+    Write-Host ""
+
+    # Re-run the script as admin
+    $scriptPath = $MyInvocation.MyCommand.Path
+    Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`"" -Verb RunAs
+    exit 0
+}
+
 # ── Configuration ──────────────────────────────────────────────────────────────
 
 $REG_BASE        = "HKCU\SOFTWARE\LidKeeper"
