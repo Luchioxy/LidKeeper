@@ -331,27 +331,35 @@ function Uninstall-All {
         Write-Host (T 'TaskNotFound') -ForegroundColor DarkGray
     }
 
+    # Default Windows lid action is Sleep (1)
+    $defaultAction = $LID_SLEEP
+
     $hasOriginal = Test-Path $REG_BASE
     if ($hasOriginal) {
         $origAC = Get-ItemProperty -Path $REG_BASE -Name "OriginalLidActionAC" -ErrorAction SilentlyContinue
         $origDC = Get-ItemProperty -Path $REG_BASE -Name "OriginalLidActionDC" -ErrorAction SilentlyContinue
 
-        if ($null -ne $origAC) {
-            & powercfg /setacvalueindex SCHEME_CURRENT $SUB_BUTTONS_GUID $LID_ACTION_GUID $origAC.OriginalLidActionAC 2>&1 | Out-Null
-            Write-Host "$((T 'RestoredPlugged')) $($LID_ACTION_NAMES[[int]$origAC.OriginalLidActionAC])" -ForegroundColor Green
-        }
-        if ($null -ne $origDC) {
-            & powercfg /setdcvalueindex SCHEME_CURRENT $SUB_BUTTONS_GUID $LID_ACTION_GUID $origDC.OriginalLidActionDC 2>&1 | Out-Null
-            Write-Host "$((T 'RestoredBattery')) $($LID_ACTION_NAMES[[int]$origDC.OriginalLidActionDC])" -ForegroundColor Green
-        }
+        # Use saved original value, or fall back to Windows default (Sleep)
+        $restoreAC = if ($null -ne $origAC) { [int]$origAC.OriginalLidActionAC } else { $defaultAction }
+        $restoreDC = if ($null -ne $origDC) { [int]$origDC.OriginalLidActionDC } else { $defaultAction }
 
+        & powercfg /setacvalueindex SCHEME_CURRENT $SUB_BUTTONS_GUID $LID_ACTION_GUID $restoreAC 2>&1 | Out-Null
+        & powercfg /setdcvalueindex SCHEME_CURRENT $SUB_BUTTONS_GUID $LID_ACTION_GUID $restoreDC 2>&1 | Out-Null
         & powercfg /setactive SCHEME_CURRENT 2>&1 | Out-Null
+
+        Write-Host "$((T 'RestoredPlugged')) $($LID_ACTION_NAMES[$restoreAC])" -ForegroundColor Green
+        Write-Host "$((T 'RestoredBattery')) $($LID_ACTION_NAMES[$restoreDC])" -ForegroundColor Green
 
         Remove-Item -Path $REG_BASE -Recurse -Force -ErrorAction SilentlyContinue
         Write-Host (T 'CleanedRegistry') -ForegroundColor Green
     }
     else {
-        Write-Host (T 'NoOriginalSettings') -ForegroundColor DarkGray
+        # No registry at all — restore to Windows default
+        & powercfg /setacvalueindex SCHEME_CURRENT $SUB_BUTTONS_GUID $LID_ACTION_GUID $defaultAction 2>&1 | Out-Null
+        & powercfg /setdcvalueindex SCHEME_CURRENT $SUB_BUTTONS_GUID $LID_ACTION_GUID $defaultAction 2>&1 | Out-Null
+        & powercfg /setactive SCHEME_CURRENT 2>&1 | Out-Null
+        Write-Host "$((T 'RestoredPlugged')) $($LID_ACTION_NAMES[$defaultAction])" -ForegroundColor Green
+        Write-Host "$((T 'RestoredBattery')) $($LID_ACTION_NAMES[$defaultAction])" -ForegroundColor Green
     }
 
     Write-Host ""
