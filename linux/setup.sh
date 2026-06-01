@@ -9,13 +9,14 @@ set -e
 
 INSTALL_DIR="$HOME/.lidkeeper"
 MONITOR_SCRIPT="$INSTALL_DIR/monitor.sh"
+PID_FILE="$INSTALL_DIR/inhibit.pid"
 SERVICE_NAME="lidkeeper-monitor"
 SERVICE_PATH="$HOME/.config/systemd/user/$SERVICE_NAME.service"
 TIMER_PATH="$HOME/.config/systemd/user/$SERVICE_NAME.timer"
 LOG_FILE="$INSTALL_DIR/lidkeeper.log"
 
-# Agent process names
-AGENT_PROCESSES=("claude" "codex" "WorkBuddy")
+# Agent process names (case-sensitive on Linux)
+AGENT_PROCESSES=("claude" "Codex" "WorkBuddy")
 
 # ── Colors ─────────────────────────────────────────────────────────────────────
 
@@ -45,14 +46,6 @@ check_agents_running() {
     return 1
 }
 
-get_lid_action() {
-    if [ -f /etc/systemd/logind.conf ]; then
-        grep "^HandleLidSwitch=" /etc/systemd/logind.conf 2>/dev/null | cut -d= -f2 || echo "suspend"
-    else
-        echo "suspend"
-    fi
-}
-
 # ── Mode Implementations ──────────────────────────────────────────────────────
 
 install_smart_mode() {
@@ -63,23 +56,31 @@ install_smart_mode() {
     mkdir -p "$INSTALL_DIR"
     mkdir -p "$HOME/.config/systemd/user"
 
-    # Save original settings
-    if [ -f /etc/systemd/logind.conf ]; then
-        cp /etc/systemd/logind.conf "$INSTALL_DIR/logind.conf.bak" 2>/dev/null || true
-    fi
-
-    # Create monitor script
+    # Create monitor script with proper lid-switch inhibition
     cat > "$MONITOR_SCRIPT" << 'EOF'
 #!/bin/bash
 # LidKeeper Monitor for Linux
 # Called by systemd timer every 60 seconds
 
 INSTALL_DIR="$HOME/.lidkeeper"
+PID_FILE="$INSTALL_DIR/inhibit.pid"
 LOG_FILE="$INSTALL_DIR/lidkeeper.log"
-AGENT_PROCESSES=("claude" "codex" "WorkBuddy")
+AGENT_PROCESSES=("claude" "Codex" "WorkBuddy")
 
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG_FILE"
+}
+
+# Kill tracked inhibit process if it exists
+kill_tracked() {
+    if [ -f "$PID_FILE" ]; then
+        local pid
+        pid=$(cat "$PID_FILE")
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" 2>/dev/null || true
+        fi
+        rm -f "$PID_FILE"
+    fi
 }
 
 check_agents_running() {
@@ -92,16 +93,15 @@ check_agents_running() {
 }
 
 if check_agents_running; then
-    # Agents running - prevent idle sleep
-    systemd-inhibit --what=idle:sleep --who=LidKeeper --why="AI Agent running" sleep infinity &
-    echo $! > "$INSTALL_DIR/inhibit.pid"
+    # Kill old inhibit if running, then start fresh
+    kill_tracked
+    # Inhibit idle sleep AND lid-switch-triggered sleep
+    systemd-inhibit --what=idle:sleep:handle-lid-switch --who=LidKeeper --why="AI Agent running" sleep infinity &
+    echo $! > "$PID_FILE"
     log "Agents running - preventing sleep (PID: $!)"
 else
     # No agents - allow sleep
-    if [ -f "$INSTALL_DIR/inhibit.pid" ]; then
-        kill "$(cat "$INSTALL_DIR/inhibit.pid")" 2>/dev/null || true
-        rm -f "$INSTALL_DIR/inhibit.pid"
-    fi
+    kill_tracked
     log "No agents - allowing sleep"
 fi
 EOF
@@ -138,8 +138,8 @@ EOF
 
     # If agents are running now, prevent sleep immediately
     if check_agents_running; then
-        systemd-inhibit --what=idle:sleep --who=LidKeeper --why="AI Agent running" sleep infinity &
-        echo $! > "$INSTALL_DIR/inhibit.pid"
+        systemd-inhibit --what=idle:sleep:handle-lid-switch --who=LidKeeper --why="AI Agent running" sleep infinity &
+        echo $! > "$PID_FILE"
         echo -e "  ${GREEN}Agent(s) detected, sleep prevented now.${NC}"
     fi
 
@@ -160,10 +160,13 @@ install_always_on_mode() {
     echo -e "  ${CYAN}[Always-On Mode] Configuring...${NC}"
     echo ""
 
+    # Create install directory for backup
+    mkdir -p "$INSTALL_DIR"
+
     # Check if we can modify logind.conf
     if [ -w /etc/systemd/logind.conf ]; then
-        # Backup original
-        cp /etc/systemd/logind.conf /etc/systemd/logind.conf.bak
+        # Backup original to our install dir
+        cp /etc/systemd/logind.conf "$INSTALL_DIR/logind.conf.bak"
 
         # Set lid close to ignore
         sed -i 's/^HandleLidSwitch=.*/HandleLidSwitch=ignore/' /etc/systemd/logind.conf
@@ -180,14 +183,14 @@ install_always_on_mode() {
     else
         echo -e "  ${YELLOW}Need sudo to modify /etc/systemd/logind.conf${NC}"
         echo ""
-        sudo bash -c '
-            cp /etc/systemd/logind.conf /etc/systemd/logind.conf.bak
-            sed -i "s/^HandleLidSwitch=.*/HandleLidSwitch=ignore/" /etc/systemd/logind.conf
-            if ! grep -q "^HandleLidSwitch=" /etc/systemd/logind.conf; then
-                echo "HandleLidSwitch=ignore" >> /etc/systemd/logind.conf
+        sudo bash -c "
+            cp /etc/systemd/logind.conf '$INSTALL_DIR/logind.conf.bak'
+            sed -i 's/^HandleLidSwitch=.*/HandleLidSwitch=ignore/' /etc/systemd/logind.conf
+            if ! grep -q '^HandleLidSwitch=' /etc/systemd/logind.conf; then
+                echo 'HandleLidSwitch=ignore' >> /etc/systemd/logind.conf
             fi
             systemctl restart systemd-logind
-        '
+        "
         echo -e "  ${GREEN}Lid close action set to 'ignore'.${NC}"
     fi
 
@@ -213,10 +216,14 @@ uninstall_all() {
     rm -f "$SERVICE_PATH"
     rm -f "$TIMER_PATH"
 
-    # Kill any running inhibit
-    if [ -f "$INSTALL_DIR/inhibit.pid" ]; then
-        kill "$(cat "$INSTALL_DIR/inhibit.pid")" 2>/dev/null || true
-        rm -f "$INSTALL_DIR/inhibit.pid"
+    # Kill tracked inhibit process
+    if [ -f "$PID_FILE" ]; then
+        local pid
+        pid=$(cat "$PID_FILE")
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" 2>/dev/null || true
+        fi
+        rm -f "$PID_FILE"
     fi
 
     # Restore original logind.conf if backup exists

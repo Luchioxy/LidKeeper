@@ -9,12 +9,13 @@ set -e
 
 INSTALL_DIR="$HOME/.lidkeeper"
 MONITOR_SCRIPT="$INSTALL_DIR/monitor.sh"
+PID_FILE="$INSTALL_DIR/caffeinate.pid"
 PLIST_NAME="com.lidkeeper.monitor"
 PLIST_PATH="$HOME/Library/LaunchAgents/$PLIST_NAME.plist"
 LOG_FILE="$INSTALL_DIR/lidkeeper.log"
 
-# Agent process names
-AGENT_PROCESSES=("claude" "codex" "WorkBuddy")
+# Agent process names (case-sensitive on macOS)
+AGENT_PROCESSES=("claude" "Codex" "WorkBuddy")
 
 # ── Colors ─────────────────────────────────────────────────────────────────────
 
@@ -44,15 +45,6 @@ check_agents_running() {
     return 1
 }
 
-get_current_lid_action() {
-    # Check if lid close causes sleep
-    if pmset -g | grep -q "SleepOnPowerButton 1"; then
-        echo "sleep"
-    else
-        echo "none"
-    fi
-}
-
 # ── Mode Implementations ──────────────────────────────────────────────────────
 
 install_smart_mode() {
@@ -62,21 +54,34 @@ install_smart_mode() {
     # Create install directory
     mkdir -p "$INSTALL_DIR"
 
-    # Save original settings
-    pmset -g > "$INSTALL_DIR/original_pmset.txt" 2>/dev/null || true
+    # Save original pmset settings for restore
+    pmset -g | grep -E "^\s*(sleep|disablesleep|disksleep)" > "$INSTALL_DIR/original_pmset.txt" 2>/dev/null || true
 
-    # Create monitor script
+    # Create monitor script with proper PID tracking
     cat > "$MONITOR_SCRIPT" << 'EOF'
 #!/bin/bash
 # LidKeeper Monitor for macOS
 # Called by LaunchAgent every 60 seconds
 
 INSTALL_DIR="$HOME/.lidkeeper"
+PID_FILE="$INSTALL_DIR/caffeinate.pid"
 LOG_FILE="$INSTALL_DIR/lidkeeper.log"
-AGENT_PROCESSES=("claude" "codex" "WorkBuddy")
+AGENT_PROCESSES=("claude" "Codex" "WorkBuddy")
 
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG_FILE"
+}
+
+# Kill tracked caffeinate process if it exists
+kill_tracked() {
+    if [ -f "$PID_FILE" ]; then
+        local pid
+        pid=$(cat "$PID_FILE")
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" 2>/dev/null || true
+        fi
+        rm -f "$PID_FILE"
+    fi
 }
 
 check_agents_running() {
@@ -89,12 +94,14 @@ check_agents_running() {
 }
 
 if check_agents_running; then
-    # Agents running - prevent sleep
-    caffeinate -i -s -w $$ &
-    log "Agents running - preventing sleep"
+    # Kill old caffeinate if running, then start fresh
+    kill_tracked
+    caffeinate -i -s &
+    echo $! > "$PID_FILE"
+    log "Agents running - preventing sleep (PID: $!)"
 else
-    # No agents - allow sleep
-    pkill -f "caffeinate" 2>/dev/null || true
+    # No agents - stop preventing sleep
+    kill_tracked
     log "No agents - allowing sleep"
 fi
 EOF
@@ -132,6 +139,7 @@ EOF
     # If agents are running now, prevent sleep immediately
     if check_agents_running; then
         caffeinate -i -s &
+        echo $! > "$PID_FILE"
         echo -e "  ${GREEN}Agent(s) detected, sleep prevented now.${NC}"
     fi
 
@@ -151,6 +159,10 @@ EOF
 install_always_on_mode() {
     echo -e "  ${CYAN}[Always-On Mode] Configuring...${NC}"
     echo ""
+
+    # Save original settings before modifying
+    mkdir -p "$INSTALL_DIR"
+    pmset -g | grep -E "^\s*(sleep|disablesleep|disksleep)" > "$INSTALL_DIR/original_pmset.txt" 2>/dev/null || true
 
     # Prevent all sleep
     sudo pmset -a disablesleep 1
@@ -177,13 +189,31 @@ uninstall_all() {
         echo -e "  ${GREEN}Removed LaunchAgent.${NC}"
     fi
 
-    # Kill any running caffeinate
-    pkill -f "caffeinate" 2>/dev/null || true
+    # Kill tracked caffeinate process
+    if [ -f "$PID_FILE" ]; then
+        local pid
+        pid=$(cat "$PID_FILE")
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" 2>/dev/null || true
+        fi
+        rm -f "$PID_FILE"
+    fi
 
-    # Restore original settings if available
+    # Restore original settings
     if [ -f "$INSTALL_DIR/original_pmset.txt" ]; then
-        sudo pmset -a disablesleep 0
-        sudo pmset -a sleep 1
+        # Parse and restore each saved setting
+        while IFS= read -r line; do
+            key=$(echo "$line" | awk '{print $1}')
+            value=$(echo "$line" | awk '{print $2}')
+            if [ -n "$key" ] && [ -n "$value" ]; then
+                sudo pmset -a "$key" "$value" 2>/dev/null || true
+            fi
+        done < "$INSTALL_DIR/original_pmset.txt"
+        echo -e "  ${GREEN}Restored original sleep settings.${NC}"
+    else
+        # Fallback: restore defaults
+        sudo pmset -a disablesleep 0 2>/dev/null || true
+        sudo pmset -a sleep 1 2>/dev/null || true
         echo -e "  ${GREEN}Restored default sleep settings.${NC}"
     fi
 

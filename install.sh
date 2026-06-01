@@ -46,6 +46,9 @@ case $OS in
         ;;
     macos|linux)
         TEMP_DIR=$(mktemp -d)
+        # Cleanup temp dir on exit (including SIGINT)
+        trap 'rm -rf "$TEMP_DIR"' EXIT INT TERM
+
         SETUP_URL="$BASE_URL/$OS/setup.sh"
         SETUP_FILE="$TEMP_DIR/setup.sh"
 
@@ -59,9 +62,6 @@ case $OS in
             echo -e "  ${RED}Failed to download setup script.${NC}"
             exit 1
         fi
-
-        # Cleanup
-        rm -rf "$TEMP_DIR"
         ;;
     *)
         echo -e "  ${RED}Unsupported OS: $(uname -s)${NC}"

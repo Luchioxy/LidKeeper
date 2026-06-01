@@ -95,9 +95,11 @@ lidkeeper
 
 ## 系统要求
 
-- Windows 10/11
-- PowerShell 5.1+
-- 管理员权限（脚本会自动请求）
+| 平台 | 要求 |
+|------|------|
+| **Windows** | Windows 10/11，PowerShell 5.1+，管理员权限（自动请求） |
+| **macOS** | macOS 10.13+，bash，`caffeinate`（内置），`launchctl`（内置） |
+| **Linux** | systemd，bash，`systemd-inhibit`，常开模式需要 sudo 权限 |
 
 ## 常见问题
 

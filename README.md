@@ -95,9 +95,11 @@ The `lidkeeper` command gives you:
 
 ## Requirements
 
-- Windows 10/11
-- PowerShell 5.1+
-- Administrator rights (auto-requested if needed)
+| Platform | Requirements |
+|----------|-------------|
+| **Windows** | Windows 10/11, PowerShell 5.1+, Administrator rights (auto-requested) |
+| **macOS** | macOS 10.13+, bash, `caffeinate` (built-in), `launchctl` (built-in) |
+| **Linux** | systemd, bash, `systemd-inhibit`, sudo access for Always-On mode |
 
 ## FAQ
 
